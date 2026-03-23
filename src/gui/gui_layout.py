@@ -1,0 +1,90 @@
+"""
+Глобальный слой layout приложения: переключение загрузчик / контент / контент с консолью.
+
+Контракт: GUILayout строит и переключает слоты (loader, content, content_console).
+Роутер (navigation) решает, какой слот показать и какой экран (frame) в нём pack'ить.
+Экраны (screens) только занимают content_top или loader_slot; отступы/блоки форм — через template.components (SettingsBlock и др.).
+"""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from src.gui.app_modal import GUIModalsController
+from src.gui.layout.content import build_content_console_slot, build_content_slot
+from src.gui.layout.loader import build_loader_slot
+from src.gui.template.styles import PALETTE
+
+
+class GUILayout:
+    """
+    Глобальный layout: один из слотов (loader, content, content_console, …). Переключение через show(name).
+    """
+
+    def __init__(self, root: tk.Tk) -> None:
+        self._root = root
+        self.container = ttk.Frame(root)
+        self.container.pack(fill=tk.BOTH, expand=True)
+        self._slots: dict[str, ttk.Frame] = {}
+
+        # App slots (порядок сборки: loader, content, content_console)
+        loader_frame = build_loader_slot(self.container)
+        self._slots["loader"] = loader_frame
+        self._loader_slot = loader_frame
+
+        content_result = build_content_slot(self.container)
+        self._slots["content"] = content_result.frame
+        self.content_top = content_result.content_top
+
+        content_console_result = build_content_console_slot(self.container)
+        self._slots["content_console"] = content_console_result.frame
+        self.content_console_top = content_console_result.content_top
+        self.log_text = content_console_result.log_text
+
+        # Слой для модалок: поверх текущего layout, цвет из styles.PALETTE["modal_overlay"].
+        self._modal_layer = tk.Frame(self.container, bg=PALETTE["modal_overlay"])
+        self._modal_layer._is_app_modal_layer = True  # для OverlayModalBase.show/hide
+        self._modals_registry = GUIModalsController(self._modal_layer)
+
+    @property
+    def modals(self) -> GUIModalsController:
+        """Контроллер модалок: show_info, show_confirm, show_input."""
+        return self._modals_registry
+
+    @property
+    def loader_slot(self) -> ttk.Frame:
+        """Слот для экрана загрузки (полноэкранный)."""
+        return self._loader_slot
+
+    def add_slot(self, name: str) -> ttk.Frame:
+        """Добавить новый слот (четвёртый layout…). Возвращает фрейм для заполнения."""
+        if name in self._slots:
+            return self._slots[name]
+        frame = ttk.Frame(self.container)
+        self._slots[name] = frame
+        return frame
+
+    def show(self, name: str) -> None:
+        """Показать layout по имени слота (loader, content, content_console или добавленный через add_slot)."""
+        for slot in self._slots.values():
+            slot.pack_forget()
+        if name in self._slots:
+            self._slots[name].pack(fill=tk.BOTH, expand=True)
+
+    def show_loader(self) -> None:
+        """Показать слой загрузчика."""
+        self.show("loader")
+
+    def show_content(self) -> None:
+        """Показать слой контента без консоли (экраны: home, project, settings и т.д.)."""
+        self.show("content")
+
+    def show_content_console(self) -> None:
+        """Показать слой контента с консолью (экран выполнения pipeline)."""
+        self.show("content_console")
+
+
+def create_gui_layout(root: tk.Tk) -> GUILayout:
+    """Создаёт GUI layout. Контейнер уже упакован в root."""
+    return GUILayout(root)

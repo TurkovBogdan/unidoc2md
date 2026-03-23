@@ -1,0 +1,358 @@
+"""Таб «Markdown»: логика (none / llm_processing), провайдер, модель, настройки LLM."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+from typing import Any
+
+from src.modules.llm_providers.schemas.chat import LLMChatReasoningEffort
+from src.modules.project.sections.markdown_config import (
+    MARKDOWN_DEFAULTS,
+    MARKDOWN_HELP_ARTICLE,
+    MARKDOWN_KEYS,
+    MARKDOWN_LOGICS,
+    MARKDOWN_MODE_DESCRIPTIONS,
+    MARKDOWN_SETTINGS_UI,
+    MarkdownConfig,
+)
+
+from src.gui.adapters import get_chat_models_for_provider, get_chat_provider_options
+from src.gui.template.components import (
+    CustomScrollbar,
+    ScrollableFrame,
+    SettingsBlock,
+    grid_sub_block,
+)
+from src.gui.template.elements import (
+    gui_element_header_3,
+    gui_element_input_description,
+    gui_element_input_label,
+    gui_element_input_select,
+    gui_element_input_spin_float,
+    gui_element_input_text_area,
+    gui_element_separator,
+)
+from src.gui.template.styles import (
+    FONT_FAMILY_UI,
+    PALETTE,
+    UI_FONT_SIZE,
+    UI_SETTINGS_BLOCK,
+    UI_TABS,
+)
+
+_REASONING_OPTIONS: list[tuple[str, str]] = [
+    (LLMChatReasoningEffort.DISABLED.value, "Выкл"),
+    (LLMChatReasoningEffort.LOW.value, "Низкий"),
+    (LLMChatReasoningEffort.MEDIUM.value, "Средний"),
+    (LLMChatReasoningEffort.HIGH.value, "Высокий"),
+]
+
+class MarkdownGenerationSettingsTab(ttk.Frame):
+    """Режим (none / llm_processing), при LLM — провайдер, модель, reasoning, temperature."""
+
+    SETTINGS_WIDTH_PX = 520
+    _SEPARATOR_PADX = 12
+
+    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:
+        super().__init__(parent, **kwargs)
+        self._project_root = project_root
+        self._logic_var = tk.StringVar()
+        self._llm_frame: ttk.Frame | None = None
+        self._llm_frame_row: int = 0
+        self._model_settings_frame: ttk.Frame | None = None
+        self._model_settings_row: int = 0
+        self._provider_var = tk.StringVar()
+        self._model_var = tk.StringVar()
+        self._reasoning_var = tk.StringVar()
+        self._temperature_var = tk.StringVar()
+        self._logic_description: tk.Widget | None = None
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        padx, pady = UI_TABS["content_padding"]
+        wrap = ttk.Frame(self)
+        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)
+
+        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])
+        left_frame.pack_propagate(False)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        self._scroll = ScrollableFrame(left_frame)
+        self._scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))
+        cfg = UI_SETTINGS_BLOCK
+        ui = MARKDOWN_SETTINGS_UI
+        block = SettingsBlock(self._scroll.content_frame)
+
+        mode_row = block.add_field_row_frame()
+        self._logic_combo = gui_element_input_select(
+            mode_row,
+            variable=self._logic_var,
+            values=[display for _code, display in MARKDOWN_LOGICS.options],
+            width=28,
+        )
+        block.finish_field_row(
+            mode_row,
+            gui_element_input_label(
+                mode_row, ui.mode_field_label, wraplength=cfg["column_label_px"]
+            ),
+            self._logic_combo,
+        )
+        self._logic_var.trace_add("write", lambda *_: self._on_logic_change())
+
+        self._logic_description = gui_element_input_description(
+            block.form,
+            MARKDOWN_MODE_DESCRIPTIONS.get(MARKDOWN_LOGICS.none, ""),
+            wraplength=cfg["container_width_px"],
+        )
+        block.add_comment(self._logic_description)
+
+        block.add_full_width_row(gui_element_separator(block.form))
+        llm_sub, self._llm_frame, self._llm_frame_row = block.begin_sub_block()
+        llm_header = gui_element_header_3(self._llm_frame, ui.llm_pick_model_header, pack=False)
+        llm_sub.add_comment(llm_header)
+        p_row = llm_sub.add_field_row_frame()
+        self._provider_combo = gui_element_input_select(
+            p_row,
+            variable=self._provider_var,
+            values=get_chat_provider_options(),
+            width=26,
+        )
+        llm_sub.finish_field_row(
+            p_row,
+            gui_element_input_label(p_row, "Провайдер", wraplength=cfg["column_label_px"]),
+            self._provider_combo,
+        )
+        self._provider_var.trace_add("write", lambda *_: self._on_provider_change())
+        llm_sub.add_comment(
+            gui_element_input_description(
+                self._llm_frame,
+                ui.llm_provider_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        m_row = llm_sub.add_field_row_frame()
+        self._model_combo = gui_element_input_select(
+            m_row, variable=self._model_var, values=[], width=26
+        )
+        llm_sub.finish_field_row(
+            m_row,
+            gui_element_input_label(m_row, "Модель", wraplength=cfg["column_label_px"]),
+            self._model_combo,
+        )
+        llm_sub.add_comment(
+            gui_element_input_description(
+                self._llm_frame,
+                ui.llm_model_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+
+        model_sub, self._model_settings_frame, self._model_settings_row = block.begin_sub_block()
+        model_sub.add_full_width_row(gui_element_separator(self._model_settings_frame))
+        header_label = gui_element_header_3(
+            self._model_settings_frame, ui.llm_tune_model_header, pack=False
+        )
+        model_sub.add_comment(header_label)
+        reason_row = model_sub.add_field_row_frame()
+        reason_displays = [display for _code, display in _REASONING_OPTIONS]
+        self._reasoning_combo = gui_element_input_select(
+            reason_row,
+            variable=self._reasoning_var,
+            values=reason_displays,
+            width=26,
+        )
+        model_sub.finish_field_row(
+            reason_row,
+            gui_element_input_label(reason_row, "Размышление", wraplength=cfg["column_label_px"]),
+            self._reasoning_combo,
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.llm_reasoning_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        temp_row = model_sub.add_field_row_frame()
+        self._temperature_spin = gui_element_input_spin_float(
+            temp_row,
+            textvariable=self._temperature_var,
+            from_=0.0,
+            to=2.0,
+            increment=0.1,
+            width=6,
+            decimals=1,
+        )
+        model_sub.finish_field_row(
+            temp_row,
+            gui_element_input_label(temp_row, "Температура", wraplength=cfg["column_label_px"]),
+            self._temperature_spin,
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.llm_temperature_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        model_sub.add_label_row(
+            gui_element_input_label(
+                self._model_settings_frame,
+                ui.system_prompt_label,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.system_prompt_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        self._system_prompt_area = gui_element_input_text_area(self._model_settings_frame)
+        self._system_prompt_area.set(MARKDOWN_DEFAULTS.llm_system_prompt or "")
+        model_sub.add_full_width_row(self._system_prompt_area)
+
+        _display_for_code = {code: display for code, display in _REASONING_OPTIONS}
+        self._reasoning_var.set(
+            _display_for_code.get(MARKDOWN_DEFAULTS.llm_reasoning, "Выкл")
+        )
+        self._temperature_var.set(
+            f"{getattr(MARKDOWN_DEFAULTS, 'llm_temperature', 0.0):.1f}"
+        )
+
+        self._on_provider_change()
+        self._on_logic_change()
+
+        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)
+        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        sep.pack_propagate(False)
+
+        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+        article_label = ttk.Label(
+            right_frame, text=ui.help_sidebar_title, style="RightPanelTitle.TLabel"
+        )
+        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
+        article_container.grid(row=1, column=0, sticky=tk.NSEW)
+        article_container.columnconfigure(0, weight=1)
+        article_container.rowconfigure(0, weight=1)
+        self._article_text = tk.Text(
+            article_container,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
+            bg=PALETTE["bg_surface"],
+            fg=PALETTE["text_muted"],
+            insertbackground=PALETTE["text_muted"],
+            selectbackground=PALETTE["select_bg"],
+            selectforeground=PALETTE["select_fg"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+        )
+        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)
+        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)
+        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._article_text.configure(state=tk.NORMAL)
+        self._article_text.insert(tk.END, MARKDOWN_HELP_ARTICLE)
+        self._article_text.configure(state=tk.DISABLED)
+
+    def _current_logic_code(self) -> str:
+        display = (self._logic_var.get() or "").strip()
+        code_for_display = {disp: code for code, disp in MARKDOWN_LOGICS.options}
+        return code_for_display.get(display, MARKDOWN_LOGICS.none)
+
+    def _on_logic_change(self) -> None:
+        code = self._current_logic_code()
+        if self._logic_description:
+            self._logic_description.configure(
+                text=MARKDOWN_MODE_DESCRIPTIONS.get(code, "")
+            )
+        show_llm = code == MARKDOWN_LOGICS.llm_processing
+        if self._llm_frame is not None:
+            if show_llm:
+                grid_sub_block(self._llm_frame, self._llm_frame_row)
+            else:
+                self._llm_frame.grid_remove()
+        if self._model_settings_frame is not None:
+            if show_llm:
+                grid_sub_block(self._model_settings_frame, self._model_settings_row)
+            else:
+                self._model_settings_frame.grid_remove()
+
+    def _on_provider_change(self) -> None:
+        provider = (self._provider_var.get() or "").strip()
+        models = get_chat_models_for_provider(provider)
+        self._model_combo.set_values(models)
+        if models and (not self._model_var.get() or self._model_var.get() not in models):
+            self._model_var.set(models[0])
+
+    def refresh_options(self) -> None:
+        """Обновить списки провайдеров/моделей (при показе экрана)."""
+        self._provider_combo.set_values(get_chat_provider_options())
+        self._on_provider_change()
+        self._on_logic_change()
+
+    def load_markdown_settings(self, data: dict | None) -> None:
+        """Заполняет виджеты из секции markdown."""
+        data = data or {}
+        K = MARKDOWN_KEYS
+        logic_code = data.get(K.markdown_logic, MARKDOWN_LOGICS.none)
+        display_for_code = {code: display for code, display in MARKDOWN_LOGICS.options}
+        display = display_for_code.get(logic_code, display_for_code[MARKDOWN_LOGICS.none])
+        self._logic_var.set(display)
+        self._provider_var.set(data.get(K.llm_provider, "") or "")
+        self._model_var.set(data.get(K.llm_model, "") or "")
+        _display_for_code = {code: display for code, display in _REASONING_OPTIONS}
+        reason_code = (data.get(K.llm_reasoning) or "").strip().lower()
+        self._reasoning_var.set(
+            _display_for_code.get(reason_code, _display_for_code.get(MARKDOWN_DEFAULTS.llm_reasoning, "Выкл"))
+        )
+        t = data.get(K.llm_temperature)
+        if t is not None:
+            try:
+                tf = max(0.0, min(2.0, float(t)))
+                self._temperature_var.set(f"{tf:.1f}")
+            except (TypeError, ValueError):
+                self._temperature_var.set(f"{MARKDOWN_DEFAULTS.llm_temperature:.1f}")
+        else:
+            self._temperature_var.set(f"{MARKDOWN_DEFAULTS.llm_temperature:.1f}")
+        system_prompt = data.get(K.llm_system_prompt)
+        if system_prompt is None:
+            system_prompt = MARKDOWN_DEFAULTS.llm_system_prompt or ""
+        elif not isinstance(system_prompt, str):
+            system_prompt = ""
+        self._system_prompt_area.set(system_prompt)
+        self._on_provider_change()
+        self._on_logic_change()
+        if logic_code == MARKDOWN_LOGICS.llm_processing:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
+            self._on_provider_change()
+
+    def get_markdown_settings_data(self) -> dict[str, Any]:
+        """Собирает данные секции markdown из виджетов."""
+        K = MARKDOWN_KEYS
+        display = (self._logic_var.get() or "").strip()
+        code_for_display = {disp: code for code, disp in MARKDOWN_LOGICS.options}
+        logic_code = code_for_display.get(display, MARKDOWN_LOGICS.none)
+        reason_display = (self._reasoning_var.get() or "").strip()
+        _code_for_reason_display = {disp: code for code, disp in _REASONING_OPTIONS}
+        reason_code = _code_for_reason_display.get(
+            reason_display, MARKDOWN_DEFAULTS.llm_reasoning
+        )
+        return {
+            K.markdown_logic: logic_code,
+            K.llm_provider: (self._provider_var.get() or "").strip(),
+            K.llm_model: (self._model_var.get() or "").strip(),
+            K.llm_reasoning: reason_code,
+            K.llm_temperature: self._temperature_spin.get_float(),
+            K.llm_system_prompt: (self._system_prompt_area.get() or "").strip(),
+        }

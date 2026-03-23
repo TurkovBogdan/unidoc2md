@@ -1,0 +1,310 @@
+"""Контроллер экрана выполнения pipeline: запуск/останов через application."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from src.gui.application.pipeline_run_actions import request_cancel, start_pipeline
+from src.modules.project_pipeline.models import StageResult
+from src.gui.controllers.base import BaseScreenController
+from src.gui.screens.base_screen import BaseGUIScreen
+from src.gui.screens.project_execution import ProjectPipelineScreen
+
+if TYPE_CHECKING:
+    from src.gui.gui_layout import GUILayout
+    from src.gui.utils import ProjectPipelineConsole
+
+
+class ProjectPipelineController(BaseScreenController):
+    """Координирует экран pipeline: запуск и отмена через application layer."""
+
+    def __init__(
+        self,
+        parent,
+        layout: GUILayout,
+        *,
+        on_back,
+        project_console: ProjectPipelineConsole | None,
+        pipeline_storage,
+    ) -> None:
+        self._layout = layout
+        self._on_back = on_back
+        self._project_console = project_console
+        self._pipeline_storage = pipeline_storage
+        # Увеличивается при каждом «Запустить»; отсекает UI-колбэки от предыдущего прогона
+        # (иначе on_run_done / этапы после «Остановить → Запустить» портят панели).
+        self._pipeline_run_epoch = 0
+        self._view = ProjectPipelineScreen(
+            parent,
+            on_back,
+            project_console=project_console,
+            pipeline_storage=pipeline_storage,
+            app_layout=layout,
+            on_run_request=self._handle_run,
+            on_stop_request=self._handle_stop,
+        )
+
+    @property
+    def screen_code(self) -> str:
+        return "project_pipeline"
+
+    @property
+    def screen_title(self) -> str:
+        return ProjectPipelineScreen.SCREEN_TITLE
+
+    def get_frame(self) -> BaseGUIScreen:
+        return self._view
+
+    def set_project(self, project_root: Path) -> None:
+        """Показывает экран выполнения для проекта без автозапуска pipeline."""
+        self._view.set_project_root(project_root)
+        self._view.reset_stage_panels()
+        self._view.update_buttons()
+
+    def _on_run_done(
+        self, run_epoch: int, success: bool, message: str | None = None
+    ) -> None:
+        """Вызывается из pipeline по завершении; обновляет UI в потоке GUI."""
+        if self._project_console is not None:
+            self._project_console.call_in_ui(
+                lambda: self._apply_run_done(run_epoch, success, message)
+            )
+        else:
+            self._apply_run_done(run_epoch, success, message)
+
+    def _apply_run_done(
+        self, run_epoch: int, success: bool, message: str | None
+    ) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.on_run_done(success, message)
+
+    def _handle_run(self) -> None:
+        """Повторный запуск с экрана."""
+        project_root = self._view.get_project_root()
+        if project_root is None or self._project_console is None or self._pipeline_storage is None:
+            return
+        if self._pipeline_storage.get_current() is not None:
+            if self._layout and self._layout.modals:
+                self._layout.modals.show_info("Запуск", "Уже выполняется другой проект.")
+            return
+        self._pipeline_run_epoch += 1
+        run_epoch = self._pipeline_run_epoch
+        self._view.update_buttons(force_running=True)
+        self._project_console.clear()
+        self._view.reset_stage_panels()
+
+        def on_done(success: bool, msg: str | None = None) -> None:
+            self._on_run_done(run_epoch, success, msg)
+
+        def on_stage_complete(stage_id: str, stage_result: StageResult) -> None:
+            if run_epoch != self._pipeline_run_epoch:
+                return
+            self._on_stage_complete(run_epoch, stage_id, stage_result)
+
+        def progress_sink(stage_id: str, data: dict) -> None:
+            if run_epoch != self._pipeline_run_epoch:
+                return
+            self._on_pipeline_progress(run_epoch, stage_id, data)
+
+        def console_sink(text: str) -> None:
+            if run_epoch != self._pipeline_run_epoch:
+                return
+            self._publish_pipeline_line(text, ui_run_epoch=run_epoch)
+
+        start_pipeline(
+            project_root,
+            self._pipeline_storage,
+            console_sink,
+            on_done=on_done,
+            on_stage_complete=on_stage_complete,
+            progress_sink=progress_sink,
+        )
+
+    def _handle_stop(self) -> None:
+        if self._pipeline_storage is None:
+            return
+        if self._pipeline_storage.get_current() is None:
+            return
+        self._view.show_stop_pending()
+        self._publish_pipeline_line(
+            "[INFO] Остановка запрошена, ожидаем завершение текущих шагов..."
+        )
+        request_cancel(self._pipeline_storage)
+
+    def _publish_pipeline_line(
+        self, text: str, *, ui_run_epoch: int | None = None
+    ) -> None:
+        """Публикует строку в консоль. ui_run_epoch — не обновлять панели по логу после нового запуска."""
+        if self._project_console is None:
+            return
+        self._project_console.publish(text)
+        if ui_run_epoch is None:
+            self._project_console.call_in_ui(
+                lambda t=text: self._view.handle_pipeline_log(t)
+            )
+        else:
+            e = ui_run_epoch
+            self._project_console.call_in_ui(
+                lambda t=text, epoch=e: self._apply_pipeline_log_line(epoch, t)
+            )
+
+    def _apply_pipeline_log_line(self, run_epoch: int, text: str) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.handle_pipeline_log(text)
+
+    def _on_pipeline_progress(
+        self, run_epoch: int, stage_id: str, data: dict
+    ) -> None:
+        """События прогресса из пайплайна (не текст лога); GUI — через call_in_ui."""
+        if self._project_console is None:
+            return
+        if stage_id == "extract":
+            done = data.get("documents_done")
+            total = data.get("documents_total")
+            if not isinstance(done, int) or not isinstance(total, int):
+                return
+            self._project_console.call_in_ui(
+                lambda e=run_epoch, d=done, t=total: self._apply_extract_progress(
+                    e, d, t
+                )
+            )
+            return
+        if stage_id == "image_processing":
+            snap = dict(data)
+            self._project_console.call_in_ui(
+                lambda e=run_epoch, s=snap: self._apply_image_progress(e, s)
+            )
+            return
+        if stage_id == "markdown":
+            snap = dict(data)
+            self._project_console.call_in_ui(
+                lambda e=run_epoch, s=snap: self._apply_markdown_progress(e, s)
+            )
+            return
+        if stage_id == "tagging":
+            snap = dict(data)
+            self._project_console.call_in_ui(
+                lambda e=run_epoch, s=snap: self._apply_tagging_progress(e, s)
+            )
+            return
+
+    def _apply_extract_progress(
+        self, run_epoch: int, done: int, total: int
+    ) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.set_extract_documents_progress(done, total)
+
+    def _apply_image_progress(self, run_epoch: int, snap: dict) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.set_image_processing_live_progress(snap)
+
+    def _apply_markdown_progress(self, run_epoch: int, snap: dict) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.set_markdown_live_progress(snap)
+
+    def _apply_tagging_progress(self, run_epoch: int, snap: dict) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.set_tagging_live_progress(snap)
+
+    def _apply_discovery_count(self, run_epoch: int, count: int) -> None:
+        if run_epoch != self._pipeline_run_epoch:
+            return
+        self._view.set_discovery_found_count(count)
+
+    def _on_stage_complete(
+        self, run_epoch: int, stage_id: str, stage_result: StageResult
+    ) -> None:
+        """Вызывается из потока пайплайна после успешного этапа; GUI — только через call_in_ui."""
+        if self._project_console is None:
+            return
+        pl = stage_result.payload
+        if stage_id == "discovery":
+            if not pl:
+                return
+            try:
+                count = int(pl[0])
+            except (TypeError, ValueError):
+                return
+            self._project_console.call_in_ui(
+                lambda e=run_epoch, c=count: self._apply_discovery_count(e, c)
+            )
+            return
+        if stage_id == "extract":
+            if len(pl) < 2:
+                return
+            try:
+                done, tot = int(pl[0]), int(pl[1])
+            except (TypeError, ValueError):
+                return
+            pl_copy = list(pl)
+
+            def _ui_extract_done() -> None:
+                if run_epoch != self._pipeline_run_epoch:
+                    return
+                self._view.set_extract_documents_progress(done, tot)
+                fr: int | None = None
+                img: int | None = None
+                if len(pl_copy) >= 4:
+                    try:
+                        fr = int(pl_copy[2])
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        img = int(pl_copy[3])
+                    except (TypeError, ValueError):
+                        pass
+                self._view.set_extract_content_stats(fr, img)
+
+            self._project_console.call_in_ui(_ui_extract_done)
+            return
+        if stage_id == "image_processing":
+            if not pl:
+                return
+            summary = pl[0]
+            if not isinstance(summary, dict):
+                return
+            summary_copy = dict(summary)
+
+            def _ui_image_done() -> None:
+                if run_epoch != self._pipeline_run_epoch:
+                    return
+                self._view.set_image_processing_summary(summary_copy)
+
+            self._project_console.call_in_ui(_ui_image_done)
+            return
+        if stage_id == "markdown":
+            if not pl:
+                return
+            summary = pl[0]
+            if not isinstance(summary, dict):
+                return
+            summary_copy = dict(summary)
+
+            def _ui_markdown_done() -> None:
+                if run_epoch != self._pipeline_run_epoch:
+                    return
+                self._view.set_markdown_summary(summary_copy)
+
+            self._project_console.call_in_ui(_ui_markdown_done)
+            return
+        if stage_id == "tagging":
+            if not pl:
+                return
+            summary = pl[0]
+            if not isinstance(summary, dict):
+                return
+            summary_copy = dict(summary)
+
+            def _ui_tagging_done() -> None:
+                if run_epoch != self._pipeline_run_epoch:
+                    return
+                self._view.set_tagging_summary(summary_copy)
+
+            self._project_console.call_in_ui(_ui_tagging_done)

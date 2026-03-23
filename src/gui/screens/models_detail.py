@@ -1,0 +1,112 @@
+"""Экран редактирования одной модели LLM-провайдера."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+
+from src.gui.adapters import get_llm_models_adapter
+from src.gui.template.components.llm_provider_model_detail import LLMProviderModelDetail
+from src.gui.template.elements import gui_element_button_primary, gui_element_button_secondary
+from src.gui.template.elements.typography import gui_element_page_title
+from src.gui.screens.base_screen import BaseGUIScreen
+from src.gui.template.styles import GUI_CONTENT_WRAPPER, GUI_TOPBAR
+
+
+class ModelSettingsDetailScreen(BaseGUIScreen):
+    """Отдельный экран редактирования выбранной модели."""
+
+    SCREEN_CODE = "model_settings_detail"
+    SCREEN_TITLE = "unidoc2md | Редактирование модели"
+
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        app_root: Path,
+        on_back=None,
+        *,
+        app_layout=None,
+        **kwargs,
+    ) -> None:
+        super().__init__(parent, app_root=app_root, app_layout=app_layout, **kwargs)
+        self.app_root = Path(app_root)
+        self.on_back = on_back
+        self._manager = get_llm_models_adapter(self.app_root)
+        self._save_btn: ttk.Button | None = None
+        self._detail: LLMProviderModelDetail | None = None
+        self._model_key: str | None = None
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        self._top_panel()
+
+        ph, pv = GUI_CONTENT_WRAPPER["padding"]
+        content_wrap = tk.Frame(self, bg=GUI_CONTENT_WRAPPER["background"])
+        content_wrap.pack(fill=tk.BOTH, expand=True, padx=(ph, ph), pady=(0, pv))
+
+        gui_element_page_title(content_wrap, "Редактирование модели")
+        self._detail = LLMProviderModelDetail(content_wrap)
+        self._detail.pack(fill=tk.BOTH, expand=True)
+        self._detail.set_model(None)
+        self._update_save_button_state()
+
+    def _top_panel(self) -> None:
+        ph, pv = GUI_TOPBAR["padding"]
+        gh, _gv = GUI_TOPBAR["gap"]
+        bg = GUI_TOPBAR["background"]
+        top_bar = tk.Frame(self, bg=bg)
+        top_bar.pack(fill=tk.X, pady=(0, pv))
+        left_frame = tk.Frame(top_bar, bg=bg)
+        left_frame.pack(side=tk.LEFT, padx=(ph, 0), pady=pv)
+        gui_element_button_secondary(left_frame, "Назад", self._go_back).pack(
+            side=tk.LEFT, padx=(0, gh)
+        )
+        self._save_btn = gui_element_button_primary(left_frame, "Сохранить", self._on_save)
+        self._save_btn.pack(side=tk.LEFT)
+
+    def set_model_key(self, model_key: str | None) -> None:
+        self._model_key = model_key
+        if self._detail is None:
+            return
+        model = self._manager.get_model(model_key) if model_key else None
+        self._detail.set_model(model)
+        self._update_save_button_state()
+
+    def _update_save_button_state(self) -> None:
+        if self._save_btn is None:
+            return
+        state = tk.NORMAL if self._model_key else tk.DISABLED
+        self._save_btn.configure(state=state)
+
+    def _go_back(self) -> None:
+        if self.on_back:
+            self.on_back()
+
+    def _on_save(self) -> None:
+        if self._detail is None:
+            return
+        model_key = self._detail.get_model_key()
+        if not model_key:
+            return
+        try:
+            updates = self._detail.get_updates()
+        except ValueError as exc:
+            self._show_info("Ошибка валидации", "", errors=[str(exc)])
+            return
+        updated = self._manager.update_model(model_key, **updates)
+        if not updated:
+            self._show_info("Сохранение", "Не удалось сохранить изменения модели.")
+            return
+        self.set_model_key(model_key)
+        self._show_info("Сохранение", "Настройки модели сохранены.")
+
+    def _show_info(
+        self,
+        title: str,
+        message: str,
+        *,
+        errors: list[str] | None = None,
+    ) -> None:
+        if self._app_layout:
+            self._app_layout.modals.show_info(title, message, errors=errors)

@@ -1,0 +1,13 @@
+"""
+Слот layout «Загрузчик»: полноэкранный фрейм под экран загрузки.
+"""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+
+def build_loader_slot(parent: tk.Misc) -> ttk.Frame:
+    """Создаёт слот для экрана загрузки. Родитель — container LayoutView."""
+    return ttk.Frame(parent)

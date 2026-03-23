@@ -1,0 +1,70 @@
+"""Общие хелперы для классов инпутов: горячие клавиши Entry и типографика из темы."""
+
+from __future__ import annotations
+
+import tkinter as tk
+
+from src.gui.template.styles import INPUT_KEYCODES, PALETTE, UI_INPUTS
+
+
+def bind_entry_shortcuts(entry: tk.Entry) -> None:
+    """Ctrl+A/C/V/X по keycode, чтобы команды работали при любой раскладке."""
+
+    def _on_control_keypress(event: tk.Event) -> str | None:
+        action = INPUT_KEYCODES.get(event.keycode)
+        if not action:
+            return None
+        if action == "select_all":
+            event.widget.select_range(0, tk.END)
+            event.widget.icursor(tk.END)
+        elif action == "copy":
+            event.widget.event_generate("<<Copy>>")
+        elif action == "paste":
+            event.widget.event_generate("<<Paste>>")
+        elif action == "cut":
+            event.widget.event_generate("<<Cut>>")
+        return "break"
+
+    entry.bind("<Control-KeyPress>", _on_control_keypress, add="+")
+
+
+def bind_text_shortcuts(text: tk.Text) -> None:
+    """Ctrl+A/C/V/X по keycode для tk.Text, чтобы команды работали при любой раскладке."""
+
+    def _on_control_keypress(event: tk.Event) -> str | None:
+        action = INPUT_KEYCODES.get(event.keycode)
+        if not action:
+            return None
+        if action == "select_all":
+            text.tag_add("sel", "1.0", tk.END)
+            text.mark_set("insert", tk.END)
+        elif action == "copy":
+            text.event_generate("<<Copy>>")
+        elif action == "paste":
+            text.event_generate("<<Paste>>")
+        elif action == "cut":
+            text.event_generate("<<Cut>>")
+        return "break"
+
+    text.bind("<Control-KeyPress>", _on_control_keypress, add="+")
+
+
+def input_element_typography() -> dict[str, str | tuple[int, int]]:
+    """Словарь параметров оформления инпутов из UI_INPUTS и PALETTE."""
+    ui = UI_INPUTS
+    return {
+        "background": PALETTE[ui["element_background"]],
+        "foreground": PALETTE[ui["element_foreground"]],
+        "border": PALETTE[ui["element_border"]],
+        "insertbackground": PALETTE[ui["element_insertbackground"]],
+        "selection_background": PALETTE[ui["element_selection_background"]],
+        "selection_foreground": PALETTE[ui["element_selection_foreground"]],
+        "inner_padding": ui["element_inner_padding"],
+        "left_border_width": ui["element_left_border_width"],
+        "select_arrow_width": ui["element_select_arrow_width"],
+        "select_arrow_height": ui["element_select_arrow_height"],
+        "select_popup_borderwidth": ui["element_select_popup_borderwidth"],
+        "select_popup_max_rows": ui["element_select_popup_max_rows"],
+        "select_popup_item_padding_left": ui["element_select_popup_item_padding_left"],
+        "spin_arrow_size": ui["element_spin_arrow_size"],
+    }

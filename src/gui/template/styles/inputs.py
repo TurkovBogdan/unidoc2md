@@ -1,0 +1,257 @@
+"""Инициализация стилей полей ввода: TEntry, TCombobox, TCheckbutton, TRadiobutton, TSpinbox."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from src.gui.template.styles.theme import (
+    INPUT_KEYCODES,
+    UI_COLOR_PRIMARY,
+    UI_COLOR_PRIMARY_HOVER,
+    UI_INPUTS,
+)
+
+
+def gui_setup_input_styles(
+    root: tk.Tk,
+    style: ttk.Style,
+    palette: dict,
+    font: tuple[str | int, ...],
+) -> None:
+    """
+    Стили полей ввода: однострочное поле (TEntry), выпадающий список (TCombobox),
+    чекбокс (TCheckbutton), радио (TRadiobutton), спинбокс (TSpinbox).
+    Цвета из PALETTE, параметры из UI_INPUTS, шрифт передаётся из темы.
+    """
+    p = palette
+    ui = UI_INPUTS
+    bg_f = p[ui["field_background"]]
+    fg = p[ui["foreground"]]
+    bd = p[ui["border"]]
+    bg_s = p[ui["background_surface"]]
+    sel_bg = p[ui["select_background"]]
+    sel_fg = p[ui["select_foreground"]]
+    lb_hl = p[ui["listbox_highlight"]]
+    # Фикс обводки
+    input_border_map = [("focus", bd), ("!focus", bd)]
+
+    # ----- TCombobox -----
+    style.configure(
+        "TCombobox",
+        fieldbackground=bg_f,
+        background=UI_COLOR_PRIMARY,
+        foreground=fg,
+        arrowcolor=fg,
+        borderwidth=ui["borderwidth"],
+        relief=ui["relief"],
+        padding=ui["padding"],
+        lightcolor=bd,
+        darkcolor=bd,
+        bordercolor=bd,
+        focuscolor=bd,
+        troughcolor=UI_COLOR_PRIMARY,
+        font=font,
+        focuswidth=ui["focuswidth"],
+    )
+    style.map(
+        "TCombobox",
+        background=[
+            ("active", UI_COLOR_PRIMARY_HOVER),
+            ("readonly", UI_COLOR_PRIMARY),
+            ("!readonly", UI_COLOR_PRIMARY),
+        ],
+        troughcolor=[("active", UI_COLOR_PRIMARY_HOVER)],
+        bordercolor=input_border_map,
+        lightcolor=input_border_map,
+        darkcolor=input_border_map,
+        focuscolor=input_border_map,
+        fieldbackground=[
+            ("readonly", bg_f),
+            ("!readonly", bg_f),
+            ("focus", bg_f),
+            ("readonly focus", bg_f),
+        ],
+        foreground=[
+            ("readonly", fg),
+            ("!readonly", fg),
+            ("focus", fg),
+            ("readonly focus", fg),
+        ],
+    )
+    root.option_add("*TCombobox*Listbox.background", bg_f)
+    root.option_add("*TCombobox*Listbox.foreground", fg)
+    root.option_add("*TCombobox*Listbox.selectBackground", sel_bg)
+    root.option_add("*TCombobox*Listbox.selectForeground", sel_fg)
+    root.option_add("*TCombobox*Listbox.highlightBackground", lb_hl)
+    root.option_add("*TCombobox*Listbox.highlightColor", lb_hl)
+
+    # ----- TCheckbutton -----
+    style.configure(
+        "TCheckbutton",
+        background=bg_s,
+        foreground=fg,
+        font=font,
+    )
+    style.map(
+        "TCheckbutton",
+        background=[("active", bg_s), ("!active", bg_s)],
+        foreground=[("active", fg), ("!active", fg)],
+    )
+
+    # Панель на bg_elevated: без обёртки Checkbutton.focus — иначе clam рисует пунктир
+    # вокруг подписи (элемент Checkbutton.focus: focuscolor / focusthickness).
+    bg_e = p["bg_elevated"]
+    style.configure(
+        "ElevatedPanel.TCheckbutton",
+        background=bg_e,
+        foreground=fg,
+        font=font,
+        focuswidth=ui["focuswidth"],
+        focusthickness=0,
+        focuscolor=bg_e,
+    )
+    style.map(
+        "ElevatedPanel.TCheckbutton",
+        background=[("active", bg_e), ("!active", bg_e)],
+        foreground=[("active", fg), ("!active", fg)],
+        focuscolor=[("focus", bg_e), ("!focus", bg_e)],
+    )
+    style.layout(
+        "ElevatedPanel.TCheckbutton",
+        [
+            (
+                "Checkbutton.padding",
+                {
+                    "sticky": "nswe",
+                    "children": [
+                        ("Checkbutton.indicator", {"side": "left", "sticky": ""}),
+                        ("Checkbutton.label", {"side": "left", "sticky": "w"}),
+                    ],
+                },
+            ),
+        ],
+    )
+
+    # ----- TRadiobutton -----
+    style.configure(
+        "TRadiobutton",
+        background=bg_s,
+        foreground=fg,
+        font=font,
+    )
+    style.map(
+        "TRadiobutton",
+        background=[("active", bg_s), ("!active", bg_s)],
+        foreground=[("active", fg), ("!active", fg)],
+    )
+
+    # ----- TEntry (layout без бордера-«утолщения») -----
+    _entry_flat_layout = [
+        (
+            "Entry.border",
+            {
+                "sticky": "nswe",
+                "border": ui["entry_layout_border"],
+                "children": [
+                    (
+                        "Entry.field",
+                        {
+                            "sticky": "nswe",
+                            "children": [
+                                (
+                                    "Entry.padding",
+                                    {
+                                        "sticky": "nswe",
+                                        "children": [("Entry.textarea", {"sticky": "nswe"})],
+                                    },
+                                )
+                            ],
+                        },
+                    )
+                ],
+            },
+        )
+    ]
+    style.layout("TEntry", _entry_flat_layout)
+    style.configure(
+        "TEntry",
+        background=bd,
+        fieldbackground=bg_f,
+        foreground=fg,
+        padding=ui["entry_padding"],
+        lightcolor=bd,
+        darkcolor=bd,
+        bordercolor=bd,
+        focuscolor=bd,
+        borderwidth=ui["borderwidth"],
+        relief=ui["relief"],
+        font=font,
+        focuswidth=ui["focuswidth"],
+        insertcolor=fg,
+    )
+    style.map(
+        "TEntry",
+        background=[("readonly", bd), ("!readonly", bd), ("focus", bd)],
+        fieldbackground=[("readonly", bg_f)],
+        foreground=[("readonly", fg)],
+        bordercolor=input_border_map,
+        lightcolor=input_border_map,
+        darkcolor=input_border_map,
+        focuscolor=input_border_map,
+    )
+    # Убираем белую системную обводку фокуса на Windows (highlight рисуется поверх ttk)
+    hl_thick = ui["highlight_thickness"]
+    for input_class in ("Combobox", "TCombobox", "Spinbox", "TSpinbox"):
+        root.option_add(f"*{input_class}*highlightThickness", hl_thick)
+        root.option_add(f"*{input_class}*highlightBackground", bd)
+        root.option_add(f"*{input_class}*highlightColor", bd)
+    for input_class in ("Entry", "TEntry"):
+        root.option_add(f"*{input_class}*highlightThickness", hl_thick)
+        root.option_add(f"*{input_class}*highlightBackground", bd)
+        root.option_add(f"*{input_class}*highlightColor", bd)
+
+    # ----- TSpinbox -----
+    style.configure(
+        "TSpinbox",
+        fieldbackground=bg_f,
+        background=bg_s,
+        foreground=fg,
+        arrowcolor=fg,
+        padding=ui["padding"],
+        lightcolor=bd,
+        darkcolor=bd,
+        bordercolor=bd,
+        focuscolor=bd,
+        borderwidth=ui["borderwidth"],
+        relief=ui["relief"],
+        font=font,
+        focuswidth=ui["focuswidth"],
+    )
+    style.map(
+        "TSpinbox",
+        bordercolor=input_border_map,
+        lightcolor=input_border_map,
+        darkcolor=input_border_map,
+        focuscolor=input_border_map,
+    )
+
+    def _on_control_keypress(event: tk.Event) -> str | None:
+        w = event.widget
+        if not isinstance(w, (tk.Entry, ttk.Entry)):
+            return None
+        action = INPUT_KEYCODES.get(event.keycode)
+        if not action:
+            return None
+        if action == "select_all":
+            w.select_range(0, tk.END)
+            w.icursor(tk.END)
+        elif action == "copy":
+            w.event_generate("<<Copy>>")
+        elif action == "paste":
+            w.event_generate("<<Paste>>")
+        elif action == "cut":
+            w.event_generate("<<Cut>>")
+        return "break"
+
+    root.bind("<Control-KeyPress>", _on_control_keypress, add="+")

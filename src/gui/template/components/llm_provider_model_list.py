@@ -1,0 +1,271 @@
+"""Список моделей LLM-провайдеров с фильтрами, без редактирования."""
+
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
+import tkinter as tk
+from tkinter import ttk
+
+from src.gui.adapters import LLMProviderModelRecord
+from src.gui.template.elements.inputs import gui_element_input_select, gui_element_input_text
+from src.gui.template.styles import SPACING
+
+from .custom_scrollbar import CustomScrollbar
+
+PROVIDER_ALL = "Все"
+
+
+class LLMProviderModelList(ttk.Frame):
+    """Левая панель: фильтры и список моделей без inline-редактирования."""
+
+    def __init__(self, parent: tk.Misc, *, on_select=None, on_activate=None, **kwargs) -> None:
+        super().__init__(parent, **kwargs)
+        self._on_select = on_select
+        self._on_activate = on_activate
+        self._models: list[LLMProviderModelRecord] = []
+        self._iid_to_key: dict[str, str] = {}
+        self._provider_values: tuple[str, ...] = (PROVIDER_ALL,)
+        self._provider_var = tk.StringVar(value=PROVIDER_ALL)
+        self._search_var = tk.StringVar()
+        self._provider_select = None
+        self._search_input = None
+        self._tree: ttk.Treeview | None = None
+        self._tree_scrollbar: CustomScrollbar | None = None
+        self._filter_after_id: str | None = None
+        self._suspend_tree_event = False
+        self._build_ui()
+        self._provider_var.trace_add("write", lambda *_: self._schedule_filter_refresh())
+        self._search_var.trace_add("write", lambda *_: self._schedule_filter_refresh())
+
+    def _build_ui(self) -> None:
+        filters = ttk.Frame(self)
+        filters.pack(fill=tk.X, pady=(0, SPACING["sm"]))
+        filters.columnconfigure(1, weight=0)
+        filters.columnconfigure(3, weight=1)
+
+        ttk.Label(filters, text="Провайдер:", anchor=tk.W).grid(
+            row=0,
+            column=0,
+            sticky=tk.W,
+            padx=(0, SPACING["sm"]),
+            pady=(0, SPACING["xs"]),
+        )
+        self._provider_select = gui_element_input_select(
+            filters,
+            variable=self._provider_var,
+            values=self._provider_values,
+            width=16,
+        )
+        self._provider_select.grid(
+            row=0,
+            column=1,
+            sticky=tk.W,
+            padx=(0, SPACING["md"]),
+            pady=(0, SPACING["xs"]),
+        )
+
+        ttk.Label(filters, text="Поиск:", anchor=tk.W).grid(
+            row=0,
+            column=2,
+            sticky=tk.W,
+            padx=(0, SPACING["sm"]),
+            pady=(0, SPACING["xs"]),
+        )
+        self._search_input = gui_element_input_text(
+            filters,
+            textvariable=self._search_var,
+            width=24,
+        )
+        self._search_input.grid(
+            row=0,
+            column=3,
+            sticky=tk.EW,
+            pady=(0, SPACING["xs"]),
+        )
+
+        table_wrap = ttk.Frame(self)
+        table_wrap.pack(fill=tk.BOTH, expand=True)
+        columns = ("provider", "model", "enabled", "text", "image", "reasoning", "price", "created")
+        self._tree = ttk.Treeview(
+            table_wrap,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            style="Models.Treeview",
+        )
+        self._tree.heading("provider", text="Провайдер")
+        self._tree.heading("model", text="Модель")
+        self._tree.heading("enabled", text="Включена")
+        self._tree.heading("text", text="Текст")
+        self._tree.heading("image", text="Изображения")
+        self._tree.heading("reasoning", text="Размышление")
+        self._tree.heading("price", text="Цена")
+        self._tree.heading("created", text="Создана")
+        self._tree.column("provider", width=120, stretch=False, anchor=tk.W)
+        self._tree.column("model", width=220, stretch=True, anchor=tk.W)
+        self._tree.column("enabled", width=90, stretch=False, anchor=tk.CENTER)
+        self._tree.column("text", width=70, stretch=False, anchor=tk.CENTER)
+        self._tree.column("image", width=110, stretch=False, anchor=tk.CENTER)
+        self._tree.column("reasoning", width=110, stretch=False, anchor=tk.CENTER)
+        self._tree.column("price", width=150, stretch=False, anchor=tk.CENTER)
+        self._tree.column("created", width=90, stretch=False, anchor=tk.CENTER)
+        self._tree_scrollbar = CustomScrollbar(table_wrap, command=self._tree.yview)
+        self._tree.configure(yscrollcommand=self._tree_scrollbar.set)
+        self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        self._tree.bind("<Double-1>", self._on_tree_activate)
+        self._tree.bind("<Return>", self._on_tree_activate)
+
+    @staticmethod
+    def _bool_label(value: bool) -> str:
+        return "Да" if value else "Нет"
+
+    @staticmethod
+    def _format_price(value: float | int | None) -> str:
+        if value is None:
+            return "-"
+        try:
+            decimal_value = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return "-"
+        exponent = decimal_value.as_tuple().exponent
+        if exponent >= -2:
+            return f"${decimal_value:.2f}"
+        return f"${format(decimal_value, 'f')}"
+
+    @classmethod
+    def _price_label(cls, model: LLMProviderModelRecord) -> str:
+        return f"{cls._format_price(model.price_input)} / {cls._format_price(model.price_output)}"
+
+    @staticmethod
+    def _created_label(value: int | None) -> str:
+        if value in (None, ""):
+            return "-"
+        try:
+            timestamp = int(value)
+        except (TypeError, ValueError, OSError):
+            return "-"
+        if timestamp <= 0:
+            return "-"
+        try:
+            return datetime.fromtimestamp(timestamp).strftime("%d.%m.%y")
+        except (ValueError, OSError, OverflowError):
+            return "-"
+
+    def set_models(
+        self,
+        models: list[LLMProviderModelRecord],
+        *,
+        preferred_key: str | None = None,
+    ) -> None:
+        current_key = preferred_key or self.get_selected_key()
+        self._models = list(models)
+        provider_values = tuple([PROVIDER_ALL] + sorted({m.provider_code for m in self._models}))
+        if provider_values != self._provider_values and self._provider_select is not None:
+            self._provider_select.set_values(provider_values)
+            self._provider_values = provider_values
+        if self._provider_var.get() not in provider_values:
+            self._provider_var.set(PROVIDER_ALL)
+        self._apply_filters(preferred_key=current_key)
+
+    def get_selected_key(self) -> str | None:
+        if not self._tree:
+            return None
+        selection = self._tree.selection()
+        if not selection:
+            return None
+        return self._iid_to_key.get(selection[0])
+
+    def select_model(self, model_key: str | None, *, notify: bool = False) -> None:
+        if not self._tree:
+            return
+        target_iid = None
+        for iid, key in self._iid_to_key.items():
+            if key == model_key:
+                target_iid = iid
+                break
+        self._suspend_tree_event = not notify
+        try:
+            if target_iid is None:
+                selection = self._tree.selection()
+                if selection:
+                    self._tree.selection_remove(*selection)
+                return
+            self._tree.selection_set(target_iid)
+            self._tree.focus(target_iid)
+            self._tree.see(target_iid)
+        finally:
+            self._suspend_tree_event = False
+
+    def _schedule_filter_refresh(self) -> None:
+        if self._filter_after_id is not None:
+            self.after_cancel(self._filter_after_id)
+        self._filter_after_id = self.after(120, self._apply_filters)
+
+    def _matches_filters(self, model: LLMProviderModelRecord) -> bool:
+        provider = (self._provider_var.get() or "").strip()
+        if provider and provider != PROVIDER_ALL and model.provider_code != provider:
+            return False
+        query = (self._search_var.get() or "").strip().lower()
+        if query and query not in model.code.lower():
+            return False
+        return True
+
+    def _apply_filters(self, *, preferred_key: str | None = None) -> None:
+        self._filter_after_id = None
+        if not self._tree:
+            return
+        self._iid_to_key.clear()
+        self._tree.delete(*self._tree.get_children())
+        visible_keys: list[str] = []
+        row_idx = 0
+        for model in self._models:
+            if not self._matches_filters(model):
+                continue
+            iid = f"m{row_idx}"
+            row_idx += 1
+            self._tree.insert(
+                "",
+                tk.END,
+                iid=iid,
+                values=(
+                    model.provider_code,
+                    model.code,
+                    self._bool_label(model.enabled),
+                    self._bool_label(model.input_text),
+                    self._bool_label(model.input_image),
+                    self._bool_label(model.reasoning),
+                    self._price_label(model),
+                    self._created_label(model.created),
+                ),
+            )
+            self._iid_to_key[iid] = model.model_key
+            visible_keys.append(model.model_key)
+
+        target_key = preferred_key if preferred_key in visible_keys else None
+        if target_key is None and visible_keys:
+            target_key = visible_keys[0]
+        self.select_model(target_key, notify=False)
+        if self._on_select:
+            self._on_select(target_key)
+
+    def _on_tree_select(self, _event=None) -> None:
+        if self._suspend_tree_event or self._on_select is None:
+            return
+        self._on_select(self.get_selected_key())
+
+    def _on_tree_activate(self, event=None) -> str:
+        if event is not None and self._tree is not None:
+            region = self._tree.identify_region(event.x, event.y)
+            if region != "cell":
+                return "break"
+            row_id = self._tree.identify_row(event.y)
+            if not row_id:
+                return "break"
+        if self._on_activate is not None:
+            model_key = self.get_selected_key()
+            if model_key:
+                self._on_activate(model_key)
+        return "break"

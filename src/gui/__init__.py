@@ -1,0 +1,6 @@
+"""GUI-конфигуратор проектов unidoc2md."""
+
+from .main import main
+from .bootstrap import GUIBootstrap
+
+__all__ = ["main", "GUIBootstrap"]

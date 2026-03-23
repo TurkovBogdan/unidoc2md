@@ -1,0 +1,176 @@
+"""Переиспользуемый кастомный вертикальный скроллбар на Canvas."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from collections.abc import Callable
+
+from src.gui.template.styles import SCROLL_AREA
+
+
+class CustomScrollbar(tk.Canvas):
+    """Тонкий вертикальный скроллбар с полной кастомной отрисовкой.
+
+    Совместим с `yscrollcommand`/`command` у `Canvas`, `Text`, `Listbox`, `Treeview`.
+    """
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        command: Callable[..., object] | None = None,
+        **kwargs,
+    ) -> None:
+        width = kwargs.pop("width", SCROLL_AREA["width"])
+        super().__init__(
+            parent,
+            width=width,
+            bg=SCROLL_AREA["trough"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            takefocus=0,
+            **kwargs,
+        )
+        self._command = command
+        self._scroll_first = 0.0
+        self._scroll_last = 1.0
+        self._thumb_id: int | None = None
+        self._thumb_hovered = False
+        self._thumb_dragging = False
+        self._thumb_drag_offset = 0.0
+
+        self.bind("<Configure>", self._on_configure)
+        self.bind("<Button-1>", self._on_press)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.bind("<Motion>", self._on_motion)
+        self.bind("<Leave>", self._on_leave)
+
+    def configure(self, cnf=None, **kwargs):
+        """Поддерживает стандартный `command=...` плюс обычный configure Canvas."""
+        if cnf and isinstance(cnf, dict) and "command" in cnf:
+            self._command = cnf.pop("command")
+        if "command" in kwargs:
+            self._command = kwargs.pop("command")
+        return super().configure(cnf, **kwargs)
+
+    config = configure
+
+    def set(self, first: str | float, last: str | float) -> None:
+        self._scroll_first = float(first)
+        self._scroll_last = float(last)
+        self._draw_thumb()
+
+    def _on_configure(self, event: tk.Event) -> None:
+        self._draw_thumb()
+
+    def _draw_thumb(self) -> None:
+        self.delete("thumb")
+        height = max(0, self.winfo_height())
+        width = max(0, self.winfo_width())
+        if height <= 0 or width <= 0:
+            self._thumb_id = None
+            return
+
+        first = max(0.0, min(1.0, self._scroll_first))
+        last = max(first, min(1.0, self._scroll_last))
+        visible_ratio = last - first
+        if visible_ratio >= 0.999:
+            self._thumb_id = None
+            return
+
+        min_thumb_height = max(24, width * 3)
+        thumb_height = max(min_thumb_height, int(round(height * visible_ratio)))
+        max_top = max(0, height - thumb_height)
+        scrollable_fraction = max(0.000001, 1.0 - visible_ratio)
+        thumb_top = int(round((first / scrollable_fraction) * max_top)) if max_top else 0
+        thumb_top = min(max(0, thumb_top), max_top)
+        thumb_bottom = thumb_top + thumb_height
+        inset = 1 if width > 3 else 0
+        thumb_color = (
+            SCROLL_AREA["active"]
+            if (self._thumb_hovered or self._thumb_dragging)
+            else SCROLL_AREA["thumb"]
+        )
+        self._thumb_id = self.create_rectangle(
+            inset,
+            thumb_top,
+            max(inset + 1, width - inset),
+            thumb_bottom,
+            fill=thumb_color,
+            outline=thumb_color,
+            tags=("thumb",),
+        )
+
+    def _get_thumb_bounds(self) -> tuple[float, float] | None:
+        if not self._thumb_id:
+            return None
+        _x0, y0, _x1, y1 = self.coords(self._thumb_id)
+        return y0, y1
+
+    def _move_to_fraction(self, fraction: float) -> None:
+        if not self._command:
+            return
+        self._command("moveto", min(max(0.0, fraction), 1.0))
+
+    def _scroll_to_thumb_center(self, y: float) -> None:
+        height = max(1, self.winfo_height())
+        visible_ratio = max(0.0, min(1.0, self._scroll_last - self._scroll_first))
+        if visible_ratio >= 1.0:
+            return
+        thumb_height = max(24, int(round(height * visible_ratio)))
+        max_top = max(1, height - thumb_height)
+        top = min(max(0.0, y - thumb_height / 2), float(max_top))
+        scrollable_fraction = max(0.0, 1.0 - visible_ratio)
+        fraction = (top / max_top) * scrollable_fraction
+        self._move_to_fraction(fraction)
+
+    def _on_press(self, event: tk.Event) -> None:
+        bounds = self._get_thumb_bounds()
+        if not bounds:
+            return
+        top, bottom = bounds
+        if top <= event.y <= bottom:
+            self._thumb_dragging = True
+            self._thumb_drag_offset = event.y - top
+            self._thumb_hovered = True
+            self.grab_set()
+            self._draw_thumb()
+            return
+        self._scroll_to_thumb_center(event.y)
+
+    def _on_drag(self, event: tk.Event) -> None:
+        if not self._thumb_dragging:
+            return
+        height = max(1, self.winfo_height())
+        visible_ratio = max(0.0, min(1.0, self._scroll_last - self._scroll_first))
+        if visible_ratio >= 1.0:
+            return
+        thumb_height = max(24, int(round(height * visible_ratio)))
+        max_top = max(1, height - thumb_height)
+        top = min(max(0.0, event.y - self._thumb_drag_offset), float(max_top))
+        scrollable_fraction = max(0.0, 1.0 - visible_ratio)
+        fraction = (top / max_top) * scrollable_fraction
+        self._move_to_fraction(fraction)
+
+    def _on_release(self, event: tk.Event) -> None:
+        if self.grab_current() is self:
+            self.grab_release()
+        self._thumb_dragging = False
+        self._on_motion(event)
+
+    def _on_motion(self, event: tk.Event) -> None:
+        bounds = self._get_thumb_bounds()
+        hovered = False
+        if bounds:
+            top, bottom = bounds
+            hovered = top <= event.y <= bottom
+        if hovered != self._thumb_hovered:
+            self._thumb_hovered = hovered
+            self._draw_thumb()
+
+    def _on_leave(self, event: tk.Event) -> None:
+        if self._thumb_dragging:
+            return
+        self._thumb_hovered = False
+        self._draw_thumb()

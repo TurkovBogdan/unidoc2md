@@ -1,0 +1,19 @@
+"""Переиспользуемые GUI-компоненты (сложные, составные виджеты, обычно классы)."""
+
+from .custom_scrollbar import CustomScrollbar
+from .scaled_image_slot import ScaledImageSlot
+from .scrollable_frame import ScrollableFrame
+from .scrollable_text import scrollable_text
+from .settings_block import SettingsBlock, grid_section_banner, grid_sub_block
+from .styled_tabs import StyledTabView
+
+__all__ = [
+    "CustomScrollbar",
+    "ScaledImageSlot",
+    "ScrollableFrame",
+    "scrollable_text",
+    "SettingsBlock",
+    "grid_section_banner",
+    "grid_sub_block",
+    "StyledTabView",
+]

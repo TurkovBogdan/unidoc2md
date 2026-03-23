@@ -1,0 +1,565 @@
+"""Таб «Теггирование»: режим; при LLM — выбор модели, разделитель, настройка модели и промпты (как в Markdown)."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+from typing import Any
+
+from src.modules.llm_providers.schemas.chat import LLMChatReasoningEffort
+from src.modules.project.sections.tagging_config import (
+    TAGGING_BOOL_UI_VALUES,
+    TAGGING_DEFAULTS,
+    TAGGING_HELP_ARTICLE,
+    TAGGING_KEYS,
+    TAGGING_LLM_MODES,
+    TAGGING_MODES,
+    TAGGING_MODE_DESCRIPTIONS,
+    TAGGING_SETTINGS_UI,
+    TAGGING_TAG_FORMAT_OPTIONS,
+    TaggingConfig,
+)
+
+from src.gui.adapters import get_chat_models_for_provider, get_chat_provider_options
+from src.gui.template.components import (
+    CustomScrollbar,
+    ScrollableFrame,
+    SettingsBlock,
+    grid_sub_block,
+)
+from src.gui.template.elements import (
+    gui_element_header_3,
+    gui_element_input_description,
+    gui_element_input_label,
+    gui_element_input_select,
+    gui_element_input_spin_float,
+    gui_element_input_text_area,
+    gui_element_separator,
+)
+from src.gui.template.styles import (
+    FONT_FAMILY_UI,
+    PALETTE,
+    SPACING,
+    UI_FONT_SIZE,
+    UI_SETTINGS_BLOCK,
+    UI_TABS,
+)
+
+_REASONING_OPTIONS: list[tuple[str, str]] = [
+    (LLMChatReasoningEffort.DISABLED.value, "Выкл"),
+    (LLMChatReasoningEffort.LOW.value, "Низкий"),
+    (LLMChatReasoningEffort.MEDIUM.value, "Средний"),
+    (LLMChatReasoningEffort.HIGH.value, "Высокий"),
+]
+
+class TaggingSettingsTab(ttk.Frame):
+    """Режим работы тегирования; при вызове LLM — провайдер, модель, промпт, стартовые теги."""
+
+    SETTINGS_WIDTH_PX = 520
+    _SEPARATOR_PADX = 12
+
+    @staticmethod
+    def _tagging_bool_to_display(b: bool) -> str:
+        return TAGGING_BOOL_UI_VALUES[0] if b else TAGGING_BOOL_UI_VALUES[1]
+
+    @staticmethod
+    def _tagging_display_to_bool(display: str, default: bool) -> bool:
+        d = (display or "").strip()
+        if d == TAGGING_BOOL_UI_VALUES[0]:
+            return True
+        if d == TAGGING_BOOL_UI_VALUES[1]:
+            return False
+        return default
+
+    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:
+        super().__init__(parent, **kwargs)
+        self._project_root = project_root
+        self._mode_var = tk.StringVar()
+        self._mode_description: tk.Widget | None = None
+        self._llm_frame: ttk.Frame | None = None
+        self._llm_frame_row: int = 0
+        self._model_settings_frame: ttk.Frame | None = None
+        self._model_settings_row: int = 0
+        self._provider_var = tk.StringVar()
+        self._model_var = tk.StringVar()
+        self._reasoning_var = tk.StringVar()
+        self._temperature_var = tk.StringVar()
+        self._create_tags_field_var = tk.StringVar()
+        self._tag_format_var = tk.StringVar()
+        self._tag_format_row_frame: ttk.Frame | None = None
+        self._tag_format_hint_widget: tk.Widget | None = None
+        self._create_description_field_var = tk.StringVar()
+        self._create_date_field_var = tk.StringVar()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        padx, pady = UI_TABS["content_padding"]
+        wrap = ttk.Frame(self)
+        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)
+
+        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])
+        left_frame.pack_propagate(False)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        self._scroll = ScrollableFrame(left_frame)
+        self._scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))
+        cfg = UI_SETTINGS_BLOCK
+        ui = TAGGING_SETTINGS_UI
+        block = SettingsBlock(self._scroll.content_frame)
+
+        mode_row = block.add_field_row_frame()
+        self._mode_combo = gui_element_input_select(
+            mode_row,
+            variable=self._mode_var,
+            values=[display for _code, display in TAGGING_MODES.options],
+            width=28,
+        )
+        block.finish_field_row(
+            mode_row,
+            gui_element_input_label(
+                mode_row, ui.mode_field_label, wraplength=cfg["column_label_px"]
+            ),
+            self._mode_combo,
+        )
+        self._mode_var.trace_add("write", lambda *_: self._on_mode_change())
+
+        self._mode_description = gui_element_input_description(
+            block.form,
+            TAGGING_MODE_DESCRIPTIONS.get(TAGGING_DEFAULTS.tagging_mode, ""),
+            wraplength=cfg["container_width_px"],
+        )
+        block.add_comment(self._mode_description)
+
+        def _add_bool_row(label: str, hint: str, variable: tk.StringVar) -> None:
+            row = block.add_field_row_frame()
+            combo = gui_element_input_select(
+                row,
+                variable=variable,
+                values=list(TAGGING_BOOL_UI_VALUES),
+                width=28,
+            )
+            block.finish_field_row(
+                row,
+                gui_element_input_label(row, label, wraplength=cfg["column_label_px"]),
+                combo,
+            )
+            block.add_comment(
+                gui_element_input_description(
+                    block.form,
+                    hint,
+                    wraplength=cfg["container_width_px"],
+                )
+            )
+
+        _add_bool_row(
+            ui.create_tags_field_label,
+            ui.create_tags_field_hint,
+            self._create_tags_field_var,
+        )
+        fmt_row = block.add_field_row_frame()
+        _tag_format_values = [code for code, _ in TAGGING_TAG_FORMAT_OPTIONS]
+        self._tag_format_combo = gui_element_input_select(
+            fmt_row,
+            variable=self._tag_format_var,
+            values=_tag_format_values,
+            width=28,
+        )
+        block.finish_field_row(
+            fmt_row,
+            gui_element_input_label(
+                fmt_row, ui.tag_format_field_label, wraplength=cfg["column_label_px"]
+            ),
+            self._tag_format_combo,
+        )
+        self._tag_format_hint_widget = gui_element_input_description(
+            block.form,
+            ui.tag_format_field_hint,
+            wraplength=cfg["container_width_px"],
+        )
+        block.add_comment(self._tag_format_hint_widget)
+        self._tag_format_row_frame = fmt_row
+        self._create_tags_field_var.trace_add(
+            "write", lambda *_: self._sync_tag_format_visibility()
+        )
+        _add_bool_row(
+            ui.create_description_field_label,
+            ui.create_description_field_hint,
+            self._create_description_field_var,
+        )
+        _add_bool_row(
+            ui.create_date_field_label,
+            ui.create_date_field_hint,
+            self._create_date_field_var,
+        )
+
+        block.add_full_width_row(gui_element_separator(block.form))
+
+        llm_sub, self._llm_frame, self._llm_frame_row = block.begin_sub_block()
+        llm_sub.add_comment(
+            gui_element_header_3(self._llm_frame, ui.llm_pick_model_header, pack=False)
+        )
+        p_row = llm_sub.add_field_row_frame()
+        self._provider_combo = gui_element_input_select(
+            p_row,
+            variable=self._provider_var,
+            values=get_chat_provider_options(),
+            width=26,
+        )
+        llm_sub.finish_field_row(
+            p_row,
+            gui_element_input_label(p_row, "Провайдер", wraplength=cfg["column_label_px"]),
+            self._provider_combo,
+        )
+        self._provider_var.trace_add("write", lambda *_: self._on_provider_change())
+        llm_sub.add_comment(
+            gui_element_input_description(
+                self._llm_frame,
+                ui.llm_provider_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        m_row = llm_sub.add_field_row_frame()
+        self._model_combo = gui_element_input_select(
+            m_row, variable=self._model_var, values=[], width=26
+        )
+        llm_sub.finish_field_row(
+            m_row,
+            gui_element_input_label(m_row, "Модель", wraplength=cfg["column_label_px"]),
+            self._model_combo,
+        )
+        llm_sub.add_comment(
+            gui_element_input_description(
+                self._llm_frame,
+                ui.llm_model_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+
+        model_sub, self._model_settings_frame, self._model_settings_row = (
+            block.begin_sub_block()
+        )
+        model_sub.add_full_width_row(
+            gui_element_separator(self._model_settings_frame)
+        )
+        model_sub.add_comment(
+            gui_element_header_3(
+                self._model_settings_frame, ui.llm_tune_model_header, pack=False
+            )
+        )
+        reason_row = model_sub.add_field_row_frame()
+        reason_displays = [display for _code, display in _REASONING_OPTIONS]
+        self._reasoning_combo = gui_element_input_select(
+            reason_row,
+            variable=self._reasoning_var,
+            values=reason_displays,
+            width=26,
+        )
+        model_sub.finish_field_row(
+            reason_row,
+            gui_element_input_label(reason_row, "Размышление", wraplength=cfg["column_label_px"]),
+            self._reasoning_combo,
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.llm_reasoning_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        temp_row = model_sub.add_field_row_frame()
+        self._temperature_spin = gui_element_input_spin_float(
+            temp_row,
+            textvariable=self._temperature_var,
+            from_=0.0,
+            to=2.0,
+            increment=0.1,
+            width=6,
+            decimals=1,
+        )
+        model_sub.finish_field_row(
+            temp_row,
+            gui_element_input_label(temp_row, "Температура", wraplength=cfg["column_label_px"]),
+            self._temperature_spin,
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.llm_temperature_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+
+        model_sub.add_label_row(
+            gui_element_input_label(
+                self._model_settings_frame,
+                ui.additional_instructions_label,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.additional_instructions_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        self._system_prompt_area = gui_element_input_text_area(
+            self._model_settings_frame
+        )
+        self._system_prompt_area.set("")
+        model_sub.add_full_width_row(self._system_prompt_area)
+        _prompt_blocks_gap = tk.Frame(
+            self._model_settings_frame,
+            height=SPACING["md"],
+            bg=PALETTE["bg_surface"],
+        )
+        _prompt_blocks_gap.grid_propagate(False)
+        model_sub.add_full_width_row(_prompt_blocks_gap)
+
+        model_sub.add_label_row(
+            gui_element_input_label(
+                self._model_settings_frame,
+                ui.start_tag_set_label,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        model_sub.add_comment(
+            gui_element_input_description(
+                self._model_settings_frame,
+                ui.start_tag_set_hint,
+                wraplength=cfg["container_width_px"],
+            )
+        )
+        self._start_tag_set_area = gui_element_input_text_area(
+            self._model_settings_frame
+        )
+        self._start_tag_set_area.set(TAGGING_DEFAULTS.start_tag_set or "")
+        model_sub.add_full_width_row(self._start_tag_set_area)
+
+        _display_for_code = {code: display for code, display in _REASONING_OPTIONS}
+        self._reasoning_var.set(
+            _display_for_code.get(TAGGING_DEFAULTS.llm_reasoning, "Выкл")
+        )
+        self._temperature_var.set(
+            f"{getattr(TAGGING_DEFAULTS, 'llm_temperature', 0.3):.1f}"
+        )
+        _display_mode = {code: disp for code, disp in TAGGING_MODES.options}
+        self._mode_var.set(_display_mode[TAGGING_DEFAULTS.tagging_mode])
+        self._create_tags_field_var.set(
+            self._tagging_bool_to_display(TAGGING_DEFAULTS.create_tags_field)
+        )
+        self._tag_format_var.set(TAGGING_DEFAULTS.tag_format)
+        self._create_description_field_var.set(
+            self._tagging_bool_to_display(TAGGING_DEFAULTS.create_description_field)
+        )
+        self._create_date_field_var.set(
+            self._tagging_bool_to_display(TAGGING_DEFAULTS.create_date_field)
+        )
+        self._on_provider_change()
+        self._on_mode_change()
+        self._sync_tag_format_visibility()
+
+        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)
+        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        sep.pack_propagate(False)
+
+        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+        article_label = ttk.Label(
+            right_frame, text=ui.help_sidebar_title, style="RightPanelTitle.TLabel"
+        )
+        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
+        article_container.grid(row=1, column=0, sticky=tk.NSEW)
+        article_container.columnconfigure(0, weight=1)
+        article_container.rowconfigure(0, weight=1)
+        self._article_text = tk.Text(
+            article_container,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
+            bg=PALETTE["bg_surface"],
+            fg=PALETTE["text_muted"],
+            insertbackground=PALETTE["text_muted"],
+            selectbackground=PALETTE["select_bg"],
+            selectforeground=PALETTE["select_fg"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+        )
+        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)
+        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)
+        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._article_text.configure(state=tk.NORMAL)
+        self._article_text.insert(tk.END, TAGGING_HELP_ARTICLE)
+        self._article_text.configure(state=tk.DISABLED)
+
+    def _sync_tag_format_visibility(self) -> None:
+        """Показываем формат тега только если включено «Теггировать документы»."""
+        row = self._tag_format_row_frame
+        hint = self._tag_format_hint_widget
+        if row is None or hint is None:
+            return
+        show = self._tagging_display_to_bool(
+            self._create_tags_field_var.get(), TAGGING_DEFAULTS.create_tags_field
+        )
+        if show:
+            row.grid()
+            hint.grid()
+        else:
+            row.grid_remove()
+            hint.grid_remove()
+
+    def _current_mode_code(self) -> str:
+        display = (self._mode_var.get() or "").strip()
+        code_for_display = {disp: code for code, disp in TAGGING_MODES.options}
+        return code_for_display.get(display, TAGGING_DEFAULTS.tagging_mode)
+
+    def _on_mode_change(self) -> None:
+        code = self._current_mode_code()
+        if self._mode_description:
+            self._mode_description.configure(
+                text=TAGGING_MODE_DESCRIPTIONS.get(code, "")
+            )
+        show_llm = code in TAGGING_LLM_MODES
+        if self._llm_frame is not None:
+            if show_llm:
+                grid_sub_block(self._llm_frame, self._llm_frame_row)
+            else:
+                self._llm_frame.grid_remove()
+        if self._model_settings_frame is not None:
+            if show_llm:
+                grid_sub_block(
+                    self._model_settings_frame, self._model_settings_row
+                )
+            else:
+                self._model_settings_frame.grid_remove()
+
+    def _on_provider_change(self) -> None:
+        provider = (self._provider_var.get() or "").strip()
+        models = get_chat_models_for_provider(provider)
+        self._model_combo.set_values(models)
+        if models and (not self._model_var.get() or self._model_var.get() not in models):
+            self._model_var.set(models[0])
+
+    def refresh_options(self) -> None:
+        """Обновить списки провайдеров/моделей (при показе экрана)."""
+        self._provider_combo.set_values(get_chat_provider_options())
+        self._on_provider_change()
+        self._on_mode_change()
+        self._sync_tag_format_visibility()
+
+    def load_tagging_settings(self, data: dict | None) -> None:
+        """Заполняет виджеты из секции tagging."""
+        data = data or {}
+        K = TAGGING_KEYS
+        mode_code = data.get(K.tagging_mode, TAGGING_DEFAULTS.tagging_mode)
+        if mode_code == "create_document_tags":
+            mode_code = TAGGING_MODES.create_document_tags_linear
+        display_for_code = {code: disp for code, disp in TAGGING_MODES.options}
+        self._mode_var.set(
+            display_for_code.get(
+                mode_code,
+                display_for_code[TAGGING_DEFAULTS.tagging_mode],
+            )
+        )
+        self._create_tags_field_var.set(
+            self._tagging_bool_to_display(
+                TaggingConfig.coerce_bool(
+                    data.get(K.create_tags_field), TAGGING_DEFAULTS.create_tags_field
+                )
+            )
+        )
+        self._tag_format_var.set(
+            TaggingConfig.coerce_tag_format(
+                data.get(K.tag_format), TAGGING_DEFAULTS.tag_format
+            )
+        )
+        self._create_description_field_var.set(
+            self._tagging_bool_to_display(
+                TaggingConfig.coerce_bool(
+                    data.get(K.create_description_field),
+                    TAGGING_DEFAULTS.create_description_field,
+                )
+            )
+        )
+        self._create_date_field_var.set(
+            self._tagging_bool_to_display(
+                TaggingConfig.coerce_bool(
+                    data.get(K.create_date_field), TAGGING_DEFAULTS.create_date_field
+                )
+            )
+        )
+        self._provider_var.set(data.get(K.llm_provider, "") or "")
+        self._model_var.set(data.get(K.llm_model, "") or "")
+        _display_for_code = {code: display for code, display in _REASONING_OPTIONS}
+        reason_code = (data.get(K.llm_reasoning) or "").strip().lower()
+        self._reasoning_var.set(
+            _display_for_code.get(reason_code, _display_for_code.get(TAGGING_DEFAULTS.llm_reasoning, "Выкл"))
+        )
+        t = data.get(K.llm_temperature)
+        if t is not None:
+            try:
+                tf = max(0.0, min(2.0, float(t)))
+                self._temperature_var.set(f"{tf:.1f}")
+            except (TypeError, ValueError):
+                self._temperature_var.set(f"{TAGGING_DEFAULTS.llm_temperature:.1f}")
+        else:
+            self._temperature_var.set(f"{TAGGING_DEFAULTS.llm_temperature:.1f}")
+        extra = data.get(K.llm_additional_instructions)
+        if extra is None or not isinstance(extra, str):
+            extra = ""
+        self._system_prompt_area.set(extra.strip())
+        start_tag_set = data.get(K.start_tag_set)
+        if start_tag_set is None:
+            start_tag_set = TAGGING_DEFAULTS.start_tag_set or ""
+        elif not isinstance(start_tag_set, str):
+            start_tag_set = ""
+        self._start_tag_set_area.set(start_tag_set)
+        self._on_provider_change()
+        self._on_mode_change()
+        self._sync_tag_format_visibility()
+        if self._current_mode_code() in TAGGING_LLM_MODES:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
+            self._on_provider_change()
+
+    def get_tagging_settings_data(self) -> dict[str, Any]:
+        """Собирает данные секции tagging из виджетов."""
+        K = TAGGING_KEYS
+        mode_display = (self._mode_var.get() or "").strip()
+        _code_for_mode_display = {disp: code for code, disp in TAGGING_MODES.options}
+        mode_code = _code_for_mode_display.get(
+            mode_display, TAGGING_DEFAULTS.tagging_mode
+        )
+        reason_display = (self._reasoning_var.get() or "").strip()
+        _code_for_reason_display = {disp: code for code, disp in _REASONING_OPTIONS}
+        reason_code = _code_for_reason_display.get(
+            reason_display, TAGGING_DEFAULTS.llm_reasoning
+        )
+        return {
+            K.tagging_mode: mode_code,
+            K.create_tags_field: self._tagging_display_to_bool(
+                self._create_tags_field_var.get(), TAGGING_DEFAULTS.create_tags_field
+            ),
+            K.tag_format: TaggingConfig.coerce_tag_format(
+                self._tag_format_var.get(), TAGGING_DEFAULTS.tag_format
+            ),
+            K.create_description_field: self._tagging_display_to_bool(
+                self._create_description_field_var.get(),
+                TAGGING_DEFAULTS.create_description_field,
+            ),
+            K.create_date_field: self._tagging_display_to_bool(
+                self._create_date_field_var.get(), TAGGING_DEFAULTS.create_date_field
+            ),
+            K.llm_provider: (self._provider_var.get() or "").strip(),
+            K.llm_model: (self._model_var.get() or "").strip(),
+            K.llm_reasoning: reason_code,
+            K.llm_temperature: self._temperature_spin.get_float(),
+            K.llm_additional_instructions: (self._system_prompt_area.get() or "").strip(),
+            K.start_tag_set: (self._start_tag_set_area.get() or "").strip(),
+        }

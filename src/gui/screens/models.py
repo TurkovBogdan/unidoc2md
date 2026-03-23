@@ -1,0 +1,147 @@
+"""Экран настройки моделей: список без редактирования и деталка выбранной модели."""
+
+from __future__ import annotations
+
+import threading
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+
+from src.gui.adapters import get_llm_models_adapter
+from src.gui.template.components.llm_provider_model_list import LLMProviderModelList
+from src.gui.template.elements import gui_element_button_primary, gui_element_button_secondary
+from src.gui.template.elements.typography import gui_element_page_title
+from src.gui.screens.base_screen import BaseGUIScreen
+from src.gui.template.styles import GUI_CONTENT_WRAPPER, GUI_TOPBAR
+
+
+class ModelSettingsScreen(BaseGUIScreen):
+    """Экран списка моделей с переходом на отдельный экран редактирования."""
+
+    SCREEN_CODE = "model_settings"
+    SCREEN_TITLE = "unidoc2md | Настройка моделей"
+
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        app_root: Path,
+        on_back=None,
+        *,
+        on_edit_model=None,
+        app_layout=None,
+        **kwargs,
+    ) -> None:
+        super().__init__(parent, app_root=app_root, app_layout=app_layout, **kwargs)
+        self.app_root = Path(app_root)
+        self.on_back = on_back
+        self.on_edit_model = on_edit_model
+        self._refresh_btn: ttk.Button | None = None
+        self._edit_btn: ttk.Button | None = None
+        self._model_list: LLMProviderModelList | None = None
+        self._selected_model_key: str | None = None
+        self._manager = self._get_manager()
+        self._build_ui()
+        self.bind("<Map>", self._on_screen_show)
+        self._reload_models()
+
+    def _build_ui(self) -> None:
+        self._top_panel()
+
+        ph, pv = GUI_CONTENT_WRAPPER["padding"]
+        content_wrap = tk.Frame(self, bg=GUI_CONTENT_WRAPPER["background"])
+        content_wrap.pack(fill=tk.BOTH, expand=True, padx=(ph, ph), pady=(0, pv))
+
+        gui_element_page_title(content_wrap, "Модели")
+
+        self._model_list = LLMProviderModelList(
+            content_wrap,
+            on_select=self._on_model_selected,
+            on_activate=self._open_selected_model,
+        )
+        self._model_list.pack(fill=tk.BOTH, expand=True)
+
+    def _top_panel(self) -> None:
+        """Верхняя панель с кнопками: Назад, Редактировать, Синхронизировать."""
+        ph, pv = GUI_TOPBAR["padding"]
+        gh, _gv = GUI_TOPBAR["gap"]
+        bg = GUI_TOPBAR["background"]
+        top_bar = tk.Frame(self, bg=bg)
+        top_bar.pack(fill=tk.X, pady=(0, pv))
+        left_frame = tk.Frame(top_bar, bg=bg)
+        left_frame.pack(side=tk.LEFT, padx=(ph, 0), pady=pv)
+        gui_element_button_secondary(left_frame, "Назад", self._go_back).pack(
+            side=tk.LEFT, padx=(0, gh)
+        )
+        self._edit_btn = gui_element_button_primary(
+            left_frame, "Редактировать", self._open_selected_model
+        )
+        self._edit_btn.pack(side=tk.LEFT, padx=(0, gh))
+        self._update_edit_button_state()
+        right_frame = tk.Frame(top_bar, bg=bg)
+        right_frame.pack(side=tk.RIGHT, padx=(0, ph), pady=pv)
+        self._refresh_btn = gui_element_button_primary(
+            right_frame, "Синхронизировать", self._on_refresh_registry
+        )
+        self._refresh_btn.pack(side=tk.LEFT)
+
+    def _get_manager(self):
+        return get_llm_models_adapter(self.app_root)
+
+    def _on_screen_show(self, event=None) -> None:
+        """При показе экрана обновить список моделей по текущему конфигу."""
+        self._reload_models(preferred_key=self._selected_model_key)
+
+    def _reload_models(self, *, preferred_key: str | None = None) -> None:
+        models = self._manager.list_models()
+        if self._model_list is not None:
+            self._model_list.set_models(models, preferred_key=preferred_key or self._selected_model_key)
+
+    def _on_model_selected(self, model_key: str | None) -> None:
+        self._selected_model_key = model_key
+        self._update_edit_button_state()
+
+    def _update_edit_button_state(self) -> None:
+        if self._edit_btn is None:
+            return
+        state = tk.NORMAL if self._selected_model_key else tk.DISABLED
+        self._edit_btn.configure(state=state)
+
+    def _go_back(self) -> None:
+        if self.on_back:
+            self.on_back()
+
+    def _open_selected_model(self, model_key: str | None = None) -> None:
+        target_key = model_key or self._selected_model_key
+        if not target_key or self.on_edit_model is None:
+            return
+        self.on_edit_model(target_key)
+
+    def _on_refresh_registry(self) -> None:
+        if self._refresh_btn:
+            self._refresh_btn.config(state=tk.DISABLED)
+        app_root = self.app_root
+
+        def run() -> None:
+            report = get_llm_models_adapter(app_root).sync_available_models()
+            msg = (
+                f"Загружены данные {report.providers_count} провайдеров, новых моделей: {report.models_new}"
+            )
+            self.after(0, lambda: self._after_sync(msg, report.errors))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _after_sync(self, message: str, errors: list[str] | None = None) -> None:
+        if self._refresh_btn:
+            self._refresh_btn.config(state=tk.NORMAL)
+        self._reload_models(preferred_key=self._selected_model_key)
+        self._show_info("Реестр моделей", message, errors=errors)
+
+    def _show_info(
+        self,
+        title: str,
+        message: str,
+        *,
+        errors: list[str] | None = None,
+    ) -> None:
+        if self._app_layout:
+            self._app_layout.modals.show_info(title, message, errors=errors)
