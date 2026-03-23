@@ -1,0 +1,1 @@
+"""Исключения модуля settings_schema."""class SettingsSchemaError(ValueError):    """Ошибка декларации схемы настроек."""

@@ -1,0 +1,1 @@
+"""Модели модуля markdown."""from .markdown_document import MarkdownDocument__all__ = [    "MarkdownDocument",]

@@ -1,0 +1,1 @@
+"""Схемы и сборка конфига модуля file_extract."""from .provider_config_builder import (    build_extract_config,    get_default_extract_payload,    get_extract_settings_schema,    normalize_extract_payload,)__all__ = [    "build_extract_config",    "get_default_extract_payload",    "get_extract_settings_schema",    "normalize_extract_payload",]

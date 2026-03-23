@@ -1,0 +1,1 @@
+"""Модели пайплайна."""from .context_result import (    PipelineContext,    PipelineProgressSink,    StageResult,)__all__ = [    "PipelineContext",    "PipelineProgressSink",    "StageResult",]

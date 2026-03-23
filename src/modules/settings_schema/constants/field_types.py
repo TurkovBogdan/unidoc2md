@@ -1,0 +1,1 @@
+"""Допустимые типы полей схемы настроек."""from typing import LiteralSettingFieldType = Literal["bool", "int", "str", "select"]

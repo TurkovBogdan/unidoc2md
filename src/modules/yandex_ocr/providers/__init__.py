@@ -1,0 +1,1 @@
+"""Провайдеры модуля yandex_ocr."""from .vision_gateway import YandexOCRGateway__all__ = ["YandexOCRGateway"]

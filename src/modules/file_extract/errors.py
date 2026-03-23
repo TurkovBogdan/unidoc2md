@@ -1,0 +1,1 @@
+"""Исключения модуля file_extract."""from __future__ import annotationsclass FileExtractError(Exception):    """Базовая ошибка модуля file_extract."""    pass

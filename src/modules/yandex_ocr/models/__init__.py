@@ -1,0 +1,1 @@
+"""Модели модуля yandex_ocr."""from .ocr_models import YandexOCRRequest, YandexOCRResult__all__ = ["YandexOCRRequest", "YandexOCRResult"]

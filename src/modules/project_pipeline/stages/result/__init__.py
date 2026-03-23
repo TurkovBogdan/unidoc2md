@@ -1,0 +1,1 @@
+"""Этап result: сохранение markdown-документов в каталог result."""from .documents_index_file import DocumentsIndexFile, result_relative_md_pathfrom .stage import ResultStage__all__ = ["DocumentsIndexFile", "ResultStage", "result_relative_md_path"]
