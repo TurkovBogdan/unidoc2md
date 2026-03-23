@@ -1,0 +1,1 @@
+"""Фикстуры для тестов модуля file_extract."""from __future__ import annotations
