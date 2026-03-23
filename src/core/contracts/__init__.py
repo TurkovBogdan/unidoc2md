@@ -1,0 +1,1 @@
+"""Контракты ядра приложения."""from .logger import LoggerProtocol__all__ = ["LoggerProtocol"]

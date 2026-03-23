@@ -1,0 +1,1 @@
+"""Утилиты ядра."""from .hash import md5_bytes, md5_file, md5_string__all__ = ["md5_bytes", "md5_file", "md5_string"]
