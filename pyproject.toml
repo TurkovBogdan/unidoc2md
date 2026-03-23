@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "urb-python-template"
+version = "0.1.0"
+description = "Минимальный Python-шаблон на uv"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pip>=24.0",
+    "cairosvg>=2.9.0",
+    "Pillow>=10.0.0",
+    "pymupdf>=1.24.0",
+    "pyyaml>=6.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+dev = ["pytest>=8.0", "pyinstaller>=6.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/urb_python_template"]

@@ -1,0 +1,27 @@
+# Python cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+# Packaging and tools
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+# Logs
+*.log
+logs/
+# Runtime
+tmp/
+runtime/
+# IDE
+.idea/
+# Environment files
+.env
+.env.*
+!.env.example
+# Internal documentation
+*.md
+!/README.md
+*.psd
