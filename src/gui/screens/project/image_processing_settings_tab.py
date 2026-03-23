@@ -1,486 +1,1 @@
-"""Таб «Изображения»: логика, OCR/Vision провайдеры и модели."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from pathlib import Path
-from tkinter import ttk
-from typing import Any
-
-from src.modules.llm_providers.schemas.chat import LLMChatReasoningEffort
-from src.modules.project.sections.image_processing_config import (
-    IMAGE_PROCESSING_DEFAULTS,
-    IMAGE_PROCESSING_KEYS,
-    IMAGE_PROCESSING_LOGICS,
-    IMAGE_PROCESSING_SETTINGS_UI,
-    ImageProcessingConfig,
-)
-
-from src.gui.adapters import (
-    get_ocr_provider_options,
-    get_ocr_models_for_provider,
-    get_vision_provider_options,
-    get_vision_models_for_provider,
-)
-from src.gui.template.components import (
-    CustomScrollbar,
-    ScrollableFrame,
-    SettingsBlock,
-    grid_section_banner,
-    grid_sub_block,
-)
-from src.gui.template.elements import (
-    gui_element_header_3,
-    gui_element_input_description,
-    gui_element_input_label,
-    gui_element_input_select,
-    gui_element_input_spin_float,
-    gui_element_input_text_area,
-    gui_element_separator,
-    gui_element_warning_banner,
-)
-from src.gui.template.styles import (
-    FONT_FAMILY_UI,
-    PALETTE,
-    UI_FONT_SIZE,
-    UI_SETTINGS_BLOCK,
-    UI_TABS,
-)
-
-# Варианты «Размышление» для Vision LLM (код в конфиге, отображаемая подпись)
-_VISION_REASONING_OPTIONS: list[tuple[str, str]] = [
-    (LLMChatReasoningEffort.DISABLED.value, "Выкл"),
-    (LLMChatReasoningEffort.LOW.value, "Низкий"),
-    (LLMChatReasoningEffort.MEDIUM.value, "Средний"),
-    (LLMChatReasoningEffort.HIGH.value, "Высокий"),
-]
-
-# Описания под полем «Способ распознавания» в зависимости от выбранного варианта
-_LOGIC_DESCRIPTIONS = {
-    IMAGE_PROCESSING_LOGICS.skip: "Изображения не будут обрабатываться, не копируются в папку результатов",
-    IMAGE_PROCESSING_LOGICS.ocr_only: "OCR модели (оптическое распознавание символов) заточены на поиск текста в изображениях, как правило они дают самую высокую точность. Оптимальный выбор если вы работаете с большим количеством сканов документов",
-    IMAGE_PROCESSING_LOGICS.vision_only: "Vision модели (или мультимодальные LLM) достаточно универсальны для распознования текста, но могут некорректно определить часть текста",
-}
-
-
-class ImageProcessingSettingsTab(ttk.Frame):
-    """Режим обработки, плашка про OCR, блоки OCR и Vision с провайдером/моделью."""
-
-    SETTINGS_WIDTH_PX = 520
-    _SEPARATOR_PADX = 12
-
-    _IMAGE_PROCESSING_ARTICLE = """
-Раздел «Обработка изображений» позволяет настроить способ распознавания текста на изображениях.
-
-Доступность режимов и моделей зависит от добавленных ключей API провайдеров (openai, claude и т.д.). Добавить ключ можно на главном экране, нажав на кнопку «Настройки».
-
-Все существующие режимы:
-- Пропустить — изображения не обрабатываются, не сохраняются.
-- Yandex OCR — в будущем просто OCR, использует специальные модели заточенные именно под распознования текста. Требует наличия настроенного ключа API Яндекс 
-- Vision LLM — обработка изображения мультимодальными моделями (такие модели могут «видеть» изображения). Требует наличия ключа API любого провайдера
-
-*Вы можете настроить список доступных vision-моделей нажав на кнопку «Настройки моделей» на главном экране приложения. 
-Главное чтобы модель была включена и стояла галочка на свойстве «Поддержка входа - принимает изображения»
-""".strip()
-
-    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:
-        super().__init__(parent, **kwargs)
-        self._project_root = project_root
-        self._file_processing_logic_var = tk.StringVar()
-        self._fp_ocr_frame: ttk.Frame | None = None
-        self._fp_vision_frame: ttk.Frame | None = None
-        self._fp_ocr_provider_var = tk.StringVar()
-        self._fp_ocr_model_var = tk.StringVar()
-        self._fp_vision_provider_var = tk.StringVar()
-        self._fp_vision_model_var = tk.StringVar()
-        self._fp_vision_reasoning_var = tk.StringVar()
-        self._fp_vision_temperature_var = tk.StringVar()
-        self._data_processing_warning_banner: tk.Frame | None = None
-        self._banner_row: int = 0
-        self._ocr_frame_row: int = 0
-        self._vision_frame_row: int = 0
-        self._vision_model_settings_frame: ttk.Frame | None = None
-        self._vision_model_settings_row: int = 0
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        padx, pady = UI_TABS["content_padding"]
-        wrap = ttk.Frame(self)
-        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)
-
-        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])
-        left_frame.pack_propagate(False)
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
-        self._scroll = ScrollableFrame(left_frame)
-        self._scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))
-        cfg = UI_SETTINGS_BLOCK
-        ui = IMAGE_PROCESSING_SETTINGS_UI
-        block = SettingsBlock(self._scroll.content_frame)
-
-        mode_row = block.add_field_row_frame()
-        self._logic_combo = gui_element_input_select(
-            mode_row,
-            variable=self._file_processing_logic_var,
-            values=[
-                display for _code, display in ImageProcessingConfig.get_available_values().processing_logic
-            ],
-            width=28,
-        )
-        block.finish_field_row(
-            mode_row,
-            gui_element_input_label(
-                mode_row, ui.mode_field_label, wraplength=cfg["column_label_px"]
-            ),
-            self._logic_combo,
-        )
-        self._file_processing_logic_var.trace_add("write", lambda *_: self._on_file_processing_logic_change())
-
-        self._logic_description = gui_element_input_description(
-            block.form, _LOGIC_DESCRIPTIONS.get(IMAGE_PROCESSING_LOGICS.skip, ""), wraplength=cfg["container_width_px"]
-        )
-        block.add_comment(self._logic_description)
-
-        self._data_processing_warning_banner = gui_element_warning_banner(
-            block.form,
-            "Yandex OCR недоступен, API-ключ yandex не указан",
-        )
-        self._banner_row = block.add_section_banner(self._data_processing_warning_banner)
-        if ImageProcessingConfig.is_ocr_available():
-            self._data_processing_warning_banner.grid_remove()
-
-        block.add_full_width_row(gui_element_separator(block.form))
-        ocr_sub, self._fp_ocr_frame, self._ocr_frame_row = block.begin_sub_block()
-        ocr_header = gui_element_header_3(self._fp_ocr_frame, "Выбор модели", pack=False)
-        ocr_sub.add_comment(ocr_header)
-        ocr_sub.add_comment(
-            gui_element_input_description(
-                self._fp_ocr_frame, "Выбор провайдера OCR и используемой модели. К сожалению, пока выбор ограничен только сервисами Яндекс", wraplength=cfg["container_width_px"]
-            )
-        )
-        ocr_row0 = ocr_sub.add_field_row_frame()
-        self._fp_ocr_provider_combo = gui_element_input_select(
-            ocr_row0,
-            variable=self._fp_ocr_provider_var,
-            values=get_ocr_provider_options(),
-            width=26,
-        )
-        ocr_sub.finish_field_row(
-            ocr_row0,
-            gui_element_input_label(ocr_row0, "Провайдер", wraplength=cfg["column_label_px"]),
-            self._fp_ocr_provider_combo,
-        )
-        self._fp_ocr_provider_var.trace_add("write", lambda *_: self._on_fp_ocr_provider_change())
-        ocr_sub.add_comment(
-            gui_element_input_description(
-                self._fp_ocr_frame, "Провайдер OCR", wraplength=cfg["container_width_px"]
-            )
-        )
-        ocr_row1 = ocr_sub.add_field_row_frame()
-        self._fp_ocr_model_combo = gui_element_input_select(
-            ocr_row1, variable=self._fp_ocr_model_var, values=[], width=26
-        )
-        ocr_sub.finish_field_row(
-            ocr_row1,
-            gui_element_input_label(ocr_row1, "Модель", wraplength=cfg["column_label_px"]),
-            self._fp_ocr_model_combo,
-        )
-        ocr_sub.add_comment(
-            gui_element_input_description(
-                self._fp_ocr_frame,
-                "Используемая модель, рекомендую сохранить выбор «page»",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-
-        vision_sub, self._fp_vision_frame, self._vision_frame_row = block.begin_sub_block()
-        vision_header = gui_element_header_3(self._fp_vision_frame, "Выбор модели", pack=False)
-        vision_sub.add_comment(vision_header)
-        vision_sub.add_comment(
-            gui_element_input_description(
-                self._fp_vision_frame,
-                "Настроить список используемых моделей можно в главном меню, нажав на кнопку «Настройка моделей». Тут отображаются только модели с поддержкой обработки изображений",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        v_row0 = vision_sub.add_field_row_frame()
-        self._fp_vision_provider_combo = gui_element_input_select(
-            v_row0,
-            variable=self._fp_vision_provider_var,
-            values=get_vision_provider_options(),
-            width=26,
-        )
-        vision_sub.finish_field_row(
-            v_row0,
-            gui_element_input_label(v_row0, "Провайдер", wraplength=cfg["column_label_px"]),
-            self._fp_vision_provider_combo,
-        )
-        self._fp_vision_provider_var.trace_add("write", lambda *_: self._on_fp_vision_provider_change())
-        vision_sub.add_comment(
-            gui_element_input_description(
-                self._fp_vision_frame,
-                "Провайдер LLM с поддержкой мультимодальных моделей",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        v_row1 = vision_sub.add_field_row_frame()
-        self._fp_vision_model_combo = gui_element_input_select(
-            v_row1, variable=self._fp_vision_model_var, values=[], width=26
-        )
-        vision_sub.finish_field_row(
-            v_row1,
-            gui_element_input_label(v_row1, "Модель", wraplength=cfg["column_label_px"]),
-            self._fp_vision_model_combo,
-        )
-        vision_sub.add_comment(
-            gui_element_input_description(
-                self._fp_vision_frame,
-                "Модель поддерживающая обработку изображений",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-
-        vision_model_sub, self._vision_model_settings_frame, self._vision_model_settings_row = block.begin_sub_block()
-        vision_model_sub.add_full_width_row(gui_element_separator(self._vision_model_settings_frame))
-        vision_model_settings_header = gui_element_header_3(
-            self._vision_model_settings_frame, "Настройка модели", pack=False
-        )
-        vision_model_sub.add_comment(vision_model_settings_header)
-        reason_row = vision_model_sub.add_field_row_frame()
-        reason_displays = [display for _code, display in _VISION_REASONING_OPTIONS]
-        self._fp_vision_reasoning_combo = gui_element_input_select(
-            reason_row,
-            variable=self._fp_vision_reasoning_var,
-            values=reason_displays,
-            width=26,
-        )
-        vision_model_sub.finish_field_row(
-            reason_row,
-            gui_element_input_label(reason_row, "Размышление", wraplength=cfg["column_label_px"]),
-            self._fp_vision_reasoning_combo,
-        )
-        vision_model_sub.add_comment(
-            gui_element_input_description(
-                self._vision_model_settings_frame,
-                "Если модель поддерживает размышления, то вы можете дать ей возможность подумать и точнее определить текст документа. Однако это увеличит стоимость запроса на распознавание",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        temp_row = vision_model_sub.add_field_row_frame()
-        self._fp_vision_temperature_spin = gui_element_input_spin_float(
-            temp_row,
-            textvariable=self._fp_vision_temperature_var,
-            from_=0.0,
-            to=2.0,
-            increment=0.1,
-            width=6,
-            decimals=1,
-        )
-        vision_model_sub.finish_field_row(
-            temp_row,
-            gui_element_input_label(temp_row, "Температура", wraplength=cfg["column_label_px"]),
-            self._fp_vision_temperature_spin,
-        )
-        vision_model_sub.add_comment(
-            gui_element_input_description(
-                self._vision_model_settings_frame,
-                "Степень креативности модели (где 0.0 — отсутствие, 2.0 — максимум), рекомендую сохранить значение 0.3, чтобы дать модели немного пространства для исправления опечаток в тексте",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        vision_model_sub.add_label_row(
-            gui_element_input_label(
-                self._vision_model_settings_frame,
-                "Дополнительные инструкции",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        vision_model_sub.add_comment(
-            gui_element_input_description(
-                self._vision_model_settings_frame,
-                "В системный промпт будут добавлены инструкции для распознавания текста с изображения, "
-                "если требуется вы можете уточнить поведение модели.",
-                wraplength=cfg["container_width_px"],
-            )
-        )
-        self._fp_vision_system_prompt_area = gui_element_input_text_area(
-            self._vision_model_settings_frame,
-        )
-        self._fp_vision_system_prompt_area.set(
-            IMAGE_PROCESSING_DEFAULTS.vision_system_prompt or ""
-        )
-        vision_model_sub.add_full_width_row(self._fp_vision_system_prompt_area)
-        _display_for_code = {code: display for code, display in _VISION_REASONING_OPTIONS}
-        self._fp_vision_reasoning_var.set(
-            _display_for_code.get(IMAGE_PROCESSING_DEFAULTS.vision_reasoning, "Выкл")
-        )
-        self._fp_vision_temperature_var.set(
-            f"{getattr(IMAGE_PROCESSING_DEFAULTS, 'vision_temperature', 0.0):.1f}"
-        )
-
-        self._on_fp_ocr_provider_change()
-        self._on_file_processing_logic_change()
-
-        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)
-        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
-        sep.pack_propagate(False)
-
-        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        right_frame.columnconfigure(0, weight=1)
-        right_frame.rowconfigure(1, weight=1)
-        article_label = ttk.Label(right_frame, text="Пояснения", style="RightPanelTitle.TLabel")
-        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
-        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
-        article_container.grid(row=1, column=0, sticky=tk.NSEW)
-        article_container.columnconfigure(0, weight=1)
-        article_container.rowconfigure(0, weight=1)
-        self._article_text = tk.Text(
-            article_container,
-            wrap=tk.WORD,
-            state=tk.DISABLED,
-            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
-            bg=PALETTE["bg_surface"],
-            fg=PALETTE["text_muted"],
-            insertbackground=PALETTE["text_muted"],
-            selectbackground=PALETTE["select_bg"],
-            selectforeground=PALETTE["select_fg"],
-            relief=tk.FLAT,
-            bd=0,
-            highlightthickness=0,
-        )
-        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)
-        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)
-        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._article_text.configure(state=tk.NORMAL)
-        self._article_text.insert(tk.END, self._IMAGE_PROCESSING_ARTICLE)
-        self._article_text.configure(state=tk.DISABLED)
-
-    def _current_fp_logic_code(self) -> str:
-        display = (self._file_processing_logic_var.get() or "").strip()
-        code_for_display = {disp: code for code, disp in IMAGE_PROCESSING_LOGICS.options}
-        return code_for_display.get(display, IMAGE_PROCESSING_LOGICS.skip)
-
-    def _on_file_processing_logic_change(self) -> None:
-        code = self._current_fp_logic_code()
-        if self._logic_description:
-            self._logic_description.configure(text=_LOGIC_DESCRIPTIONS.get(code, ""))
-        show_ocr = code == IMAGE_PROCESSING_LOGICS.ocr_only
-        show_vision = code == IMAGE_PROCESSING_LOGICS.vision_only
-        if self._data_processing_warning_banner:
-            if show_ocr and not ImageProcessingConfig.is_ocr_available():
-                grid_section_banner(self._data_processing_warning_banner, self._banner_row)
-            else:
-                self._data_processing_warning_banner.grid_remove()
-        if self._fp_ocr_frame is not None:
-            if show_ocr:
-                grid_sub_block(self._fp_ocr_frame, self._ocr_frame_row)
-            else:
-                self._fp_ocr_frame.grid_remove()
-        if self._fp_vision_frame is not None:
-            if show_vision:
-                grid_sub_block(self._fp_vision_frame, self._vision_frame_row)
-            else:
-                self._fp_vision_frame.grid_remove()
-        if self._vision_model_settings_frame is not None:
-            if show_vision:
-                grid_sub_block(self._vision_model_settings_frame, self._vision_model_settings_row)
-            else:
-                self._vision_model_settings_frame.grid_remove()
-
-    def _on_fp_ocr_provider_change(self) -> None:
-        provider = (self._fp_ocr_provider_var.get() or "").strip().lower()
-        models = get_ocr_models_for_provider(provider)
-        self._fp_ocr_model_combo.set_values(models)
-        if models and (not self._fp_ocr_model_var.get() or self._fp_ocr_model_var.get() not in models):
-            self._fp_ocr_model_var.set(models[0])
-
-    def _on_fp_vision_provider_change(self) -> None:
-        provider = (self._fp_vision_provider_var.get() or "").strip()
-        models = get_vision_models_for_provider(provider)
-        self._fp_vision_model_combo.set_values(models)
-        if models and (not self._fp_vision_model_var.get() or self._fp_vision_model_var.get() not in models):
-            self._fp_vision_model_var.set(models[0])
-
-    def refresh_options(self) -> None:
-        """Обновить списки провайдеров/моделей и видимость блоков (при показе экрана)."""
-        available_logic = ImageProcessingConfig.get_available_values().processing_logic
-        logic_displays = [display for _code, display in available_logic]
-        self._logic_combo.set_values(logic_displays)
-        current_display = (self._file_processing_logic_var.get() or "").strip()
-        if logic_displays and current_display not in logic_displays:
-            self._file_processing_logic_var.set(logic_displays[0])
-        self._fp_ocr_provider_combo.set_values(get_ocr_provider_options())
-        self._on_fp_ocr_provider_change()
-        self._fp_vision_provider_combo.set_values(get_vision_provider_options())
-        self._on_fp_vision_provider_change()
-        self._on_file_processing_logic_change()
-
-    def load_image_processing(self, data: dict[str, Any] | None) -> None:
-        """Заполняет виджеты из секции image_processing."""
-        data = data or {}
-        logic_code = data.get(IMAGE_PROCESSING_KEYS.image_processing_logic, IMAGE_PROCESSING_LOGICS.skip)
-        display_for_code = {code: display for code, display in IMAGE_PROCESSING_LOGICS.options}
-        display = display_for_code.get(logic_code, display_for_code[IMAGE_PROCESSING_LOGICS.skip])
-        self._file_processing_logic_var.set(display)
-        self._fp_ocr_provider_var.set(data.get(IMAGE_PROCESSING_KEYS.ocr_provider, IMAGE_PROCESSING_DEFAULTS.ocr_provider))
-        self._fp_ocr_model_var.set(data.get(IMAGE_PROCESSING_KEYS.ocr_model, IMAGE_PROCESSING_DEFAULTS.ocr_model))
-        self._fp_vision_provider_var.set(data.get(IMAGE_PROCESSING_KEYS.vision_provider, "") or "")
-        self._fp_vision_model_var.set(data.get(IMAGE_PROCESSING_KEYS.vision_model, "") or "")
-        _display_for_code = {code: display for code, display in _VISION_REASONING_OPTIONS}
-        reason_code = (data.get(IMAGE_PROCESSING_KEYS.vision_reasoning) or "").strip().lower()
-        self._fp_vision_reasoning_var.set(
-            _display_for_code.get(reason_code, _display_for_code.get("disabled", "Выкл"))
-        )
-        system_prompt = data.get(IMAGE_PROCESSING_KEYS.vision_system_prompt)
-        if system_prompt is None:
-            system_prompt = IMAGE_PROCESSING_DEFAULTS.vision_system_prompt or ""
-        elif not isinstance(system_prompt, str):
-            system_prompt = ""
-        self._fp_vision_system_prompt_area.set(system_prompt)
-        t = data.get(IMAGE_PROCESSING_KEYS.vision_temperature)
-        if t is not None:
-            try:
-                tf = max(0.0, min(2.0, float(t)))
-                self._fp_vision_temperature_var.set(f"{tf:.1f}")
-            except (TypeError, ValueError):
-                self._fp_vision_temperature_var.set(f"{IMAGE_PROCESSING_DEFAULTS.vision_temperature:.1f}")
-        else:
-            self._fp_vision_temperature_var.set(f"{IMAGE_PROCESSING_DEFAULTS.vision_temperature:.1f}")
-        self._on_fp_ocr_provider_change()
-        self._on_file_processing_logic_change()
-        show_ocr = logic_code == IMAGE_PROCESSING_LOGICS.ocr_only
-        show_vision = logic_code == IMAGE_PROCESSING_LOGICS.vision_only
-        if show_ocr:
-            ocr_opts = get_ocr_provider_options()
-            if ocr_opts and (not self._fp_ocr_provider_var.get() or self._fp_ocr_provider_var.get() not in ocr_opts):
-                self._fp_ocr_provider_var.set(ocr_opts[0])
-            self._on_fp_ocr_provider_change()
-        if show_vision:
-            vision_opts = get_vision_provider_options()
-            if vision_opts and (not self._fp_vision_provider_var.get() or self._fp_vision_provider_var.get() not in vision_opts):
-                self._fp_vision_provider_var.set(vision_opts[0])
-            self._on_fp_vision_provider_change()
-
-    def get_image_processing_data(self) -> dict[str, Any]:
-        """Собирает данные секции image_processing из виджетов."""
-        display = (self._file_processing_logic_var.get() or "").strip()
-        code_for_display = {disp: code for code, disp in IMAGE_PROCESSING_LOGICS.options}
-        logic_code = code_for_display.get(display, IMAGE_PROCESSING_LOGICS.skip)
-        reason_display = (self._fp_vision_reasoning_var.get() or "").strip()
-        _code_for_reason_display = {disp: code for code, disp in _VISION_REASONING_OPTIONS}
-        reason_code = _code_for_reason_display.get(
-            reason_display, IMAGE_PROCESSING_DEFAULTS.vision_reasoning
-        )
-        return {
-            IMAGE_PROCESSING_KEYS.image_processing_logic: logic_code,
-            IMAGE_PROCESSING_KEYS.ocr_provider: (self._fp_ocr_provider_var.get() or "").strip().lower() or IMAGE_PROCESSING_DEFAULTS.ocr_provider,
-            IMAGE_PROCESSING_KEYS.ocr_model: (self._fp_ocr_model_var.get() or IMAGE_PROCESSING_DEFAULTS.ocr_model).strip(),
-            IMAGE_PROCESSING_KEYS.vision_provider: (self._fp_vision_provider_var.get() or "").strip(),
-            IMAGE_PROCESSING_KEYS.vision_model: (self._fp_vision_model_var.get() or "").strip(),
-            IMAGE_PROCESSING_KEYS.vision_reasoning: reason_code,
-            IMAGE_PROCESSING_KEYS.vision_system_prompt: (
-                self._fp_vision_system_prompt_area.get() or ""
-            ).strip(),
-            IMAGE_PROCESSING_KEYS.vision_temperature: self._fp_vision_temperature_spin.get_float(),
-        }
+"""Таб «Изображения»: логика, OCR/Vision провайдеры и модели."""from __future__ import annotationsimport tkinter as tkfrom pathlib import Pathfrom tkinter import ttkfrom typing import Anyfrom src.modules.llm_providers.schemas.chat import LLMChatReasoningEffortfrom src.modules.project.sections.image_processing_config import (    IMAGE_PROCESSING_DEFAULTS,    IMAGE_PROCESSING_KEYS,    IMAGE_PROCESSING_LOGICS,    IMAGE_PROCESSING_SETTINGS_UI,    ImageProcessingConfig,)from src.gui.adapters import (    get_ocr_provider_options,    get_ocr_models_for_provider,    get_vision_provider_options,    get_vision_models_for_provider,)from src.gui.template.components import (    CustomScrollbar,    ScrollableFrame,    SettingsBlock,    grid_section_banner,    grid_sub_block,)from src.gui.template.elements import (    gui_element_header_3,    gui_element_input_description,    gui_element_input_label,    gui_element_input_select,    gui_element_input_spin_float,    gui_element_input_text_area,    gui_element_separator,    gui_element_warning_banner,)from src.gui.template.styles import (    FONT_FAMILY_UI,    PALETTE,    UI_FONT_SIZE,    UI_SETTINGS_BLOCK,    UI_TABS,)# Варианты «Размышление» для Vision LLM (код в конфиге, отображаемая подпись)_VISION_REASONING_OPTIONS: list[tuple[str, str]] = [    (LLMChatReasoningEffort.DISABLED.value, "Выкл"),    (LLMChatReasoningEffort.LOW.value, "Низкий"),    (LLMChatReasoningEffort.MEDIUM.value, "Средний"),    (LLMChatReasoningEffort.HIGH.value, "Высокий"),]# Описания под полем «Способ распознавания» в зависимости от выбранного варианта_LOGIC_DESCRIPTIONS = {    IMAGE_PROCESSING_LOGICS.skip: "Изображения не будут обрабатываться, не копируются в папку результатов",    IMAGE_PROCESSING_LOGICS.ocr_only: "OCR модели (оптическое распознавание символов) заточены на поиск текста в изображениях, как правило они дают самую высокую точность. Оптимальный выбор если вы работаете с большим количеством сканов документов",    IMAGE_PROCESSING_LOGICS.vision_only: "Vision модели (или мультимодальные LLM) достаточно универсальны для распознования текста, но могут некорректно определить часть текста",}class ImageProcessingSettingsTab(ttk.Frame):    """Режим обработки, плашка про OCR, блоки OCR и Vision с провайдером/моделью."""    SETTINGS_WIDTH_PX = 520    _SEPARATOR_PADX = 12    _IMAGE_PROCESSING_ARTICLE = """Раздел «Обработка изображений» позволяет настроить способ распознавания текста на изображениях.Доступность режимов и моделей зависит от добавленных ключей API провайдеров (openai, claude и т.д.). Добавить ключ можно на главном экране, нажав на кнопку «Настройки».Все существующие режимы:- Пропустить — изображения не обрабатываются, не сохраняются.- Yandex OCR — в будущем просто OCR, использует специальные модели заточенные именно под распознования текста. Требует наличия настроенного ключа API Яндекс - Vision LLM — обработка изображения мультимодальными моделями (такие модели могут «видеть» изображения). Требует наличия ключа API любого провайдера*Вы можете настроить список доступных vision-моделей нажав на кнопку «Настройки моделей» на главном экране приложения. Главное чтобы модель была включена и стояла галочка на свойстве «Поддержка входа - принимает изображения»""".strip()    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:        super().__init__(parent, **kwargs)        self._project_root = project_root        self._file_processing_logic_var = tk.StringVar()        self._fp_ocr_frame: ttk.Frame | None = None        self._fp_vision_frame: ttk.Frame | None = None        self._fp_ocr_provider_var = tk.StringVar()        self._fp_ocr_model_var = tk.StringVar()        self._fp_vision_provider_var = tk.StringVar()        self._fp_vision_model_var = tk.StringVar()        self._fp_vision_reasoning_var = tk.StringVar()        self._fp_vision_temperature_var = tk.StringVar()        self._data_processing_warning_banner: tk.Frame | None = None        self._banner_row: int = 0        self._ocr_frame_row: int = 0        self._vision_frame_row: int = 0        self._vision_model_settings_frame: ttk.Frame | None = None        self._vision_model_settings_row: int = 0        self._build_ui()    def _build_ui(self) -> None:        padx, pady = UI_TABS["content_padding"]        wrap = ttk.Frame(self)        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])        left_frame.pack_propagate(False)        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        self._scroll = ScrollableFrame(left_frame)        self._scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))        cfg = UI_SETTINGS_BLOCK        ui = IMAGE_PROCESSING_SETTINGS_UI        block = SettingsBlock(self._scroll.content_frame)        mode_row = block.add_field_row_frame()        self._logic_combo = gui_element_input_select(            mode_row,            variable=self._file_processing_logic_var,            values=[                display for _code, display in ImageProcessingConfig.get_available_values().processing_logic            ],            width=28,        )        block.finish_field_row(            mode_row,            gui_element_input_label(                mode_row, ui.mode_field_label, wraplength=cfg["column_label_px"]            ),            self._logic_combo,        )        self._file_processing_logic_var.trace_add("write", lambda *_: self._on_file_processing_logic_change())        self._logic_description = gui_element_input_description(            block.form, _LOGIC_DESCRIPTIONS.get(IMAGE_PROCESSING_LOGICS.skip, ""), wraplength=cfg["container_width_px"]        )        block.add_comment(self._logic_description)        self._data_processing_warning_banner = gui_element_warning_banner(            block.form,            "Yandex OCR недоступен, API-ключ yandex не указан",        )        self._banner_row = block.add_section_banner(self._data_processing_warning_banner)        if ImageProcessingConfig.is_ocr_available():            self._data_processing_warning_banner.grid_remove()        block.add_full_width_row(gui_element_separator(block.form))        ocr_sub, self._fp_ocr_frame, self._ocr_frame_row = block.begin_sub_block()        ocr_header = gui_element_header_3(self._fp_ocr_frame, "Выбор модели", pack=False)        ocr_sub.add_comment(ocr_header)        ocr_sub.add_comment(            gui_element_input_description(                self._fp_ocr_frame, "Выбор провайдера OCR и используемой модели. К сожалению, пока выбор ограничен только сервисами Яндекс", wraplength=cfg["container_width_px"]            )        )        ocr_row0 = ocr_sub.add_field_row_frame()        self._fp_ocr_provider_combo = gui_element_input_select(            ocr_row0,            variable=self._fp_ocr_provider_var,            values=get_ocr_provider_options(),            width=26,        )        ocr_sub.finish_field_row(            ocr_row0,            gui_element_input_label(ocr_row0, "Провайдер", wraplength=cfg["column_label_px"]),            self._fp_ocr_provider_combo,        )        self._fp_ocr_provider_var.trace_add("write", lambda *_: self._on_fp_ocr_provider_change())        ocr_sub.add_comment(            gui_element_input_description(                self._fp_ocr_frame, "Провайдер OCR", wraplength=cfg["container_width_px"]            )        )        ocr_row1 = ocr_sub.add_field_row_frame()        self._fp_ocr_model_combo = gui_element_input_select(            ocr_row1, variable=self._fp_ocr_model_var, values=[], width=26        )        ocr_sub.finish_field_row(            ocr_row1,            gui_element_input_label(ocr_row1, "Модель", wraplength=cfg["column_label_px"]),            self._fp_ocr_model_combo,        )        ocr_sub.add_comment(            gui_element_input_description(                self._fp_ocr_frame,                "Используемая модель, рекомендую сохранить выбор «page»",                wraplength=cfg["container_width_px"],            )        )        vision_sub, self._fp_vision_frame, self._vision_frame_row = block.begin_sub_block()        vision_header = gui_element_header_3(self._fp_vision_frame, "Выбор модели", pack=False)        vision_sub.add_comment(vision_header)        vision_sub.add_comment(            gui_element_input_description(                self._fp_vision_frame,                "Настроить список используемых моделей можно в главном меню, нажав на кнопку «Настройка моделей». Тут отображаются только модели с поддержкой обработки изображений",                wraplength=cfg["container_width_px"],            )        )        v_row0 = vision_sub.add_field_row_frame()        self._fp_vision_provider_combo = gui_element_input_select(            v_row0,            variable=self._fp_vision_provider_var,            values=get_vision_provider_options(),            width=26,        )        vision_sub.finish_field_row(            v_row0,            gui_element_input_label(v_row0, "Провайдер", wraplength=cfg["column_label_px"]),            self._fp_vision_provider_combo,        )        self._fp_vision_provider_var.trace_add("write", lambda *_: self._on_fp_vision_provider_change())        vision_sub.add_comment(            gui_element_input_description(                self._fp_vision_frame,                "Провайдер LLM с поддержкой мультимодальных моделей",                wraplength=cfg["container_width_px"],            )        )        v_row1 = vision_sub.add_field_row_frame()        self._fp_vision_model_combo = gui_element_input_select(            v_row1, variable=self._fp_vision_model_var, values=[], width=26        )        vision_sub.finish_field_row(            v_row1,            gui_element_input_label(v_row1, "Модель", wraplength=cfg["column_label_px"]),            self._fp_vision_model_combo,        )        vision_sub.add_comment(            gui_element_input_description(                self._fp_vision_frame,                "Модель поддерживающая обработку изображений",                wraplength=cfg["container_width_px"],            )        )        vision_model_sub, self._vision_model_settings_frame, self._vision_model_settings_row = block.begin_sub_block()        vision_model_sub.add_full_width_row(gui_element_separator(self._vision_model_settings_frame))        vision_model_settings_header = gui_element_header_3(            self._vision_model_settings_frame, "Настройка модели", pack=False        )        vision_model_sub.add_comment(vision_model_settings_header)        reason_row = vision_model_sub.add_field_row_frame()        reason_displays = [display for _code, display in _VISION_REASONING_OPTIONS]        self._fp_vision_reasoning_combo = gui_element_input_select(            reason_row,            variable=self._fp_vision_reasoning_var,            values=reason_displays,            width=26,        )        vision_model_sub.finish_field_row(            reason_row,            gui_element_input_label(reason_row, "Размышление", wraplength=cfg["column_label_px"]),            self._fp_vision_reasoning_combo,        )        vision_model_sub.add_comment(            gui_element_input_description(                self._vision_model_settings_frame,                "Если модель поддерживает размышления, то вы можете дать ей возможность подумать и точнее определить текст документа. Однако это увеличит стоимость запроса на распознавание",                wraplength=cfg["container_width_px"],            )        )        temp_row = vision_model_sub.add_field_row_frame()        self._fp_vision_temperature_spin = gui_element_input_spin_float(            temp_row,            textvariable=self._fp_vision_temperature_var,            from_=0.0,            to=2.0,            increment=0.1,            width=6,            decimals=1,        )        vision_model_sub.finish_field_row(            temp_row,            gui_element_input_label(temp_row, "Температура", wraplength=cfg["column_label_px"]),            self._fp_vision_temperature_spin,        )        vision_model_sub.add_comment(            gui_element_input_description(                self._vision_model_settings_frame,                "Степень креативности модели (где 0.0 — отсутствие, 2.0 — максимум), рекомендую сохранить значение 0.3, чтобы дать модели немного пространства для исправления опечаток в тексте",                wraplength=cfg["container_width_px"],            )        )        vision_model_sub.add_label_row(            gui_element_input_label(                self._vision_model_settings_frame,                "Дополнительные инструкции",                wraplength=cfg["container_width_px"],            )        )        vision_model_sub.add_comment(            gui_element_input_description(                self._vision_model_settings_frame,                "В системный промпт будут добавлены инструкции для распознавания текста с изображения, "                "если требуется вы можете уточнить поведение модели.",                wraplength=cfg["container_width_px"],            )        )        self._fp_vision_system_prompt_area = gui_element_input_text_area(            self._vision_model_settings_frame,        )        self._fp_vision_system_prompt_area.set(            IMAGE_PROCESSING_DEFAULTS.vision_system_prompt or ""        )        vision_model_sub.add_full_width_row(self._fp_vision_system_prompt_area)        _display_for_code = {code: display for code, display in _VISION_REASONING_OPTIONS}        self._fp_vision_reasoning_var.set(            _display_for_code.get(IMAGE_PROCESSING_DEFAULTS.vision_reasoning, "Выкл")        )        self._fp_vision_temperature_var.set(            f"{getattr(IMAGE_PROCESSING_DEFAULTS, 'vision_temperature', 0.0):.1f}"        )        self._on_fp_ocr_provider_change()        self._on_file_processing_logic_change()        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        sep.pack_propagate(False)        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        right_frame.columnconfigure(0, weight=1)        right_frame.rowconfigure(1, weight=1)        article_label = ttk.Label(right_frame, text="Пояснения", style="RightPanelTitle.TLabel")        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])        article_container.grid(row=1, column=0, sticky=tk.NSEW)        article_container.columnconfigure(0, weight=1)        article_container.rowconfigure(0, weight=1)        self._article_text = tk.Text(            article_container,            wrap=tk.WORD,            state=tk.DISABLED,            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),            bg=PALETTE["bg_surface"],            fg=PALETTE["text_muted"],            insertbackground=PALETTE["text_muted"],            selectbackground=PALETTE["select_bg"],            selectforeground=PALETTE["select_fg"],            relief=tk.FLAT,            bd=0,            highlightthickness=0,        )        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        self._article_text.configure(state=tk.NORMAL)        self._article_text.insert(tk.END, self._IMAGE_PROCESSING_ARTICLE)        self._article_text.configure(state=tk.DISABLED)    def _current_fp_logic_code(self) -> str:        display = (self._file_processing_logic_var.get() or "").strip()        code_for_display = {disp: code for code, disp in IMAGE_PROCESSING_LOGICS.options}        return code_for_display.get(display, IMAGE_PROCESSING_LOGICS.skip)    def _on_file_processing_logic_change(self) -> None:        code = self._current_fp_logic_code()        if self._logic_description:            self._logic_description.configure(text=_LOGIC_DESCRIPTIONS.get(code, ""))        show_ocr = code == IMAGE_PROCESSING_LOGICS.ocr_only        show_vision = code == IMAGE_PROCESSING_LOGICS.vision_only        if self._data_processing_warning_banner:            if show_ocr and not ImageProcessingConfig.is_ocr_available():                grid_section_banner(self._data_processing_warning_banner, self._banner_row)            else:                self._data_processing_warning_banner.grid_remove()        if self._fp_ocr_frame is not None:            if show_ocr:                grid_sub_block(self._fp_ocr_frame, self._ocr_frame_row)            else:                self._fp_ocr_frame.grid_remove()        if self._fp_vision_frame is not None:            if show_vision:                grid_sub_block(self._fp_vision_frame, self._vision_frame_row)            else:                self._fp_vision_frame.grid_remove()        if self._vision_model_settings_frame is not None:            if show_vision:                grid_sub_block(self._vision_model_settings_frame, self._vision_model_settings_row)            else:                self._vision_model_settings_frame.grid_remove()    def _on_fp_ocr_provider_change(self) -> None:        provider = (self._fp_ocr_provider_var.get() or "").strip().lower()        models = get_ocr_models_for_provider(provider)        self._fp_ocr_model_combo.set_values(models)        if models and (not self._fp_ocr_model_var.get() or self._fp_ocr_model_var.get() not in models):            self._fp_ocr_model_var.set(models[0])    def _on_fp_vision_provider_change(self) -> None:        provider = (self._fp_vision_provider_var.get() or "").strip()        models = get_vision_models_for_provider(provider)        self._fp_vision_model_combo.set_values(models)        if models and (not self._fp_vision_model_var.get() or self._fp_vision_model_var.get() not in models):            self._fp_vision_model_var.set(models[0])    def refresh_options(self) -> None:        """Обновить списки провайдеров/моделей и видимость блоков (при показе экрана)."""        available_logic = ImageProcessingConfig.get_available_values().processing_logic        logic_displays = [display for _code, display in available_logic]        self._logic_combo.set_values(logic_displays)        current_display = (self._file_processing_logic_var.get() or "").strip()        if logic_displays and current_display not in logic_displays:            self._file_processing_logic_var.set(logic_displays[0])        self._fp_ocr_provider_combo.set_values(get_ocr_provider_options())        self._on_fp_ocr_provider_change()        self._fp_vision_provider_combo.set_values(get_vision_provider_options())        self._on_fp_vision_provider_change()        self._on_file_processing_logic_change()    def load_image_processing(self, data: dict[str, Any] | None) -> None:        """Заполняет виджеты из секции image_processing."""        data = data or {}        logic_code = data.get(IMAGE_PROCESSING_KEYS.image_processing_logic, IMAGE_PROCESSING_LOGICS.skip)        display_for_code = {code: display for code, display in IMAGE_PROCESSING_LOGICS.options}        display = display_for_code.get(logic_code, display_for_code[IMAGE_PROCESSING_LOGICS.skip])        self._file_processing_logic_var.set(display)        self._fp_ocr_provider_var.set(data.get(IMAGE_PROCESSING_KEYS.ocr_provider, IMAGE_PROCESSING_DEFAULTS.ocr_provider))        self._fp_ocr_model_var.set(data.get(IMAGE_PROCESSING_KEYS.ocr_model, IMAGE_PROCESSING_DEFAULTS.ocr_model))        self._fp_vision_provider_var.set(data.get(IMAGE_PROCESSING_KEYS.vision_provider, "") or "")        self._fp_vision_model_var.set(data.get(IMAGE_PROCESSING_KEYS.vision_model, "") or "")        _display_for_code = {code: display for code, display in _VISION_REASONING_OPTIONS}        reason_code = (data.get(IMAGE_PROCESSING_KEYS.vision_reasoning) or "").strip().lower()        self._fp_vision_reasoning_var.set(            _display_for_code.get(reason_code, _display_for_code.get("disabled", "Выкл"))        )        system_prompt = data.get(IMAGE_PROCESSING_KEYS.vision_system_prompt)        if system_prompt is None:            system_prompt = IMAGE_PROCESSING_DEFAULTS.vision_system_prompt or ""        elif not isinstance(system_prompt, str):            system_prompt = ""        self._fp_vision_system_prompt_area.set(system_prompt)        t = data.get(IMAGE_PROCESSING_KEYS.vision_temperature)        if t is not None:            try:                tf = max(0.0, min(2.0, float(t)))                self._fp_vision_temperature_var.set(f"{tf:.1f}")            except (TypeError, ValueError):                self._fp_vision_temperature_var.set(f"{IMAGE_PROCESSING_DEFAULTS.vision_temperature:.1f}")        else:            self._fp_vision_temperature_var.set(f"{IMAGE_PROCESSING_DEFAULTS.vision_temperature:.1f}")        self._on_fp_ocr_provider_change()        self._on_file_processing_logic_change()        show_ocr = logic_code == IMAGE_PROCESSING_LOGICS.ocr_only        show_vision = logic_code == IMAGE_PROCESSING_LOGICS.vision_only        if show_ocr:            ocr_opts = get_ocr_provider_options()            if ocr_opts and (not self._fp_ocr_provider_var.get() or self._fp_ocr_provider_var.get() not in ocr_opts):                self._fp_ocr_provider_var.set(ocr_opts[0])            self._on_fp_ocr_provider_change()        if show_vision:            vision_opts = get_vision_provider_options()            if vision_opts and (not self._fp_vision_provider_var.get() or self._fp_vision_provider_var.get() not in vision_opts):                self._fp_vision_provider_var.set(vision_opts[0])            self._on_fp_vision_provider_change()    def get_image_processing_data(self) -> dict[str, Any]:        """Собирает данные секции image_processing из виджетов."""        display = (self._file_processing_logic_var.get() or "").strip()        code_for_display = {disp: code for code, disp in IMAGE_PROCESSING_LOGICS.options}        logic_code = code_for_display.get(display, IMAGE_PROCESSING_LOGICS.skip)        reason_display = (self._fp_vision_reasoning_var.get() or "").strip()        _code_for_reason_display = {disp: code for code, disp in _VISION_REASONING_OPTIONS}        reason_code = _code_for_reason_display.get(            reason_display, IMAGE_PROCESSING_DEFAULTS.vision_reasoning        )        return {            IMAGE_PROCESSING_KEYS.image_processing_logic: logic_code,            IMAGE_PROCESSING_KEYS.ocr_provider: (self._fp_ocr_provider_var.get() or "").strip().lower() or IMAGE_PROCESSING_DEFAULTS.ocr_provider,            IMAGE_PROCESSING_KEYS.ocr_model: (self._fp_ocr_model_var.get() or IMAGE_PROCESSING_DEFAULTS.ocr_model).strip(),            IMAGE_PROCESSING_KEYS.vision_provider: (self._fp_vision_provider_var.get() or "").strip(),            IMAGE_PROCESSING_KEYS.vision_model: (self._fp_vision_model_var.get() or "").strip(),            IMAGE_PROCESSING_KEYS.vision_reasoning: reason_code,            IMAGE_PROCESSING_KEYS.vision_system_prompt: (                self._fp_vision_system_prompt_area.get() or ""            ).strip(),            IMAGE_PROCESSING_KEYS.vision_temperature: self._fp_vision_temperature_spin.get_float(),        }

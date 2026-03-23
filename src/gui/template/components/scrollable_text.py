@@ -1,59 +1,1 @@
-"""Текстовое поле с вертикальным скроллбаром (составной компонент)."""
-
-from __future__ import annotations
-
-import tkinter as tk
-
-from src.gui.template.styles import FONT_FAMILY_MONO, PALETTE, UI_FONT_SIZE
-
-from .custom_scrollbar import CustomScrollbar
-
-
-def scrollable_text(
-    parent: tk.Misc,
-    *,
-    state: str = tk.DISABLED,
-    font: tuple[str, int] | None = None,
-) -> tk.Text:
-    """
-    Создаёт tk.Text и вертикальный скроллбар в parent.
-    Скроллбар отображается только когда контент не помещается.
-    Виджеты упаковываются в parent; возвращается виджет текста.
-    """
-    p = PALETTE
-    font = font or (FONT_FAMILY_MONO, UI_FONT_SIZE["extra_small"])
-
-    text = tk.Text(
-        parent,
-        wrap=tk.WORD,
-        state=state,
-        font=font,
-        bg=p["bg_elevated"],
-        fg=p["text_primary"],
-        insertbackground=p["text_primary"],
-        selectbackground=p["select_bg"],
-        selectforeground=p["select_fg"],
-        highlightthickness=0,
-        relief=tk.FLAT,
-        bd=0,
-    )
-    scrollbar = CustomScrollbar(parent, command=text.yview)
-    scroll_visible: list[bool] = [False]
-
-    def _on_yscroll(first: str, last: str) -> None:
-        scrollbar.set(first, last)
-        needs_scroll = not (float(first) <= 0.0 and float(last) >= 1.0)
-        if needs_scroll and not scroll_visible[0]:
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            scroll_visible[0] = True
-        elif not needs_scroll and scroll_visible[0]:
-            scrollbar.pack_forget()
-            scroll_visible[0] = False
-
-    text.configure(yscrollcommand=_on_yscroll)
-    text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-    return text
-
-
-__all__ = ["scrollable_text"]
+"""Текстовое поле с вертикальным скроллбаром (составной компонент)."""from __future__ import annotationsimport tkinter as tkfrom src.gui.template.styles import FONT_FAMILY_MONO, PALETTE, UI_FONT_SIZEfrom .custom_scrollbar import CustomScrollbardef scrollable_text(    parent: tk.Misc,    *,    state: str = tk.DISABLED,    font: tuple[str, int] | None = None,) -> tk.Text:    """    Создаёт tk.Text и вертикальный скроллбар в parent.    Скроллбар отображается только когда контент не помещается.    Виджеты упаковываются в parent; возвращается виджет текста.    """    p = PALETTE    font = font or (FONT_FAMILY_MONO, UI_FONT_SIZE["extra_small"])    text = tk.Text(        parent,        wrap=tk.WORD,        state=state,        font=font,        bg=p["bg_elevated"],        fg=p["text_primary"],        insertbackground=p["text_primary"],        selectbackground=p["select_bg"],        selectforeground=p["select_fg"],        highlightthickness=0,        relief=tk.FLAT,        bd=0,    )    scrollbar = CustomScrollbar(parent, command=text.yview)    scroll_visible: list[bool] = [False]    def _on_yscroll(first: str, last: str) -> None:        scrollbar.set(first, last)        needs_scroll = not (float(first) <= 0.0 and float(last) >= 1.0)        if needs_scroll and not scroll_visible[0]:            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)            scroll_visible[0] = True        elif not needs_scroll and scroll_visible[0]:            scrollbar.pack_forget()            scroll_visible[0] = False    text.configure(yscrollcommand=_on_yscroll)    text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)    return text__all__ = ["scrollable_text"]

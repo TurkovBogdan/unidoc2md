@@ -1,191 +1,1 @@
-"""
-Кроссплатформенная регистрация кастомных шрифтов для Tkinter.
-
-Используется при подготовке GUI (bootstrap). Регистрирует шрифт из .ttf/.otf;
-на Windows — загрузка в сессию, на Linux/macOS — копирование в каталог шрифтов пользователя.
-"""
-
-from __future__ import annotations
-
-import shutil
-import struct
-import subprocess
-import sys
-from pathlib import Path
-from typing import Optional
-
-APP_FONT_REGULAR = "JetBrainsMono-Regular.ttf"
-
-
-def get_font_family_from_file(path: Path) -> Optional[str]:
-    """
-    Читает имя семейства шрифта из TTF/OTF (таблица 'name', nameID 1).
-    Возвращает None при ошибке или если имя не найдено.
-    """
-    path = Path(path)
-    if not path.is_file():
-        return None
-    try:
-        with open(path, "rb") as f:
-            data = f.read()
-    except OSError:
-        return None
-    if len(data) < 12:
-        return None
-    num_tables = struct.unpack_from(">H", data, 4)[0]
-    if len(data) < 12 + num_tables * 16:
-        return None
-    name_offset = None
-    name_length = None
-    for i in range(num_tables):
-        off = 12 + i * 16
-        tag = data[off : off + 4].decode("ascii", errors="ignore")
-        if tag == "name":
-            name_offset = struct.unpack_from(">I", data, off + 8)[0]
-            name_length = struct.unpack_from(">I", data, off + 12)[0]
-            break
-    if name_offset is None or name_length is None or name_offset + name_length > len(data):
-        return None
-    name_data = data[name_offset : name_offset + name_length]
-    if len(name_data) < 6:
-        return None
-    format_ = struct.unpack_from(">H", name_data, 0)[0]
-    count = struct.unpack_from(">H", name_data, 2)[0]
-    string_offset = struct.unpack_from(">H", name_data, 4)[0]
-    for i in range(count):
-        rec_off = 6 + i * 12
-        if rec_off + 12 > len(name_data):
-            break
-        platform_id, encoding_id, language_id, name_id, length, offset = struct.unpack_from(
-            ">HHHHHH", name_data, rec_off
-        )
-        if name_id != 1:
-            continue
-        start = string_offset + offset
-        if start < 0 or start + length > len(name_data):
-            continue
-        raw = name_data[start : start + length]
-        if platform_id == 3:
-            try:
-                return raw.decode("utf-16-be").strip("\x00")
-            except UnicodeDecodeError:
-                continue
-        if platform_id == 0:
-            try:
-                return raw.decode("utf-16-be").strip("\x00")
-            except UnicodeDecodeError:
-                continue
-        if platform_id == 1 and raw:
-            try:
-                return raw.decode("mac-roman", errors="replace").strip("\x00")
-            except Exception:
-                continue
-    return None
-
-
-def register_font(path: Path, family_name: Optional[str] = None) -> Optional[str]:
-    """
-    Регистрирует шрифт из файла и возвращает имя семейства для использования в Tk.
-    Windows: загрузка в сессию. Linux/macOS: копирование в каталог шрифтов пользователя.
-    """
-    path = Path(path).resolve()
-    if not path.is_file():
-        return None
-    suffix = path.suffix.lower()
-    if suffix not in (".ttf", ".otf"):
-        return None
-
-    name = family_name or get_font_family_from_file(path)
-    if not name:
-        return None
-
-    if sys.platform == "win32":
-        return _register_font_windows(path, name)
-    if sys.platform == "darwin":
-        return _register_font_macos(path, name)
-    if sys.platform == "linux":
-        return _register_font_linux(path, name)
-    return name
-
-
-def _register_font_windows(path: Path, family_name: str) -> Optional[str]:
-    try:
-        import ctypes
-        gdi32 = ctypes.windll.gdi32  # type: ignore[attr-defined]
-        FR_PRIVATE = 0x10
-        added = gdi32.AddFontResourceExW(str(path), FR_PRIVATE, 0)
-        if added:
-            return family_name
-        return None
-    except Exception:
-        return None
-
-
-def _register_font_linux(path: Path, family_name: str) -> Optional[str]:
-    fonts_dir = Path.home() / ".local" / "share" / "fonts"
-    fonts_dir.mkdir(parents=True, exist_ok=True)
-    dest = fonts_dir / path.name
-    try:
-        shutil.copy2(path, dest)
-    except OSError:
-        return None
-    try:
-        subprocess.run(
-            ["fc-cache", "-f", "-v"],
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    return family_name
-
-
-def _register_font_macos(path: Path, family_name: str) -> Optional[str]:
-    fonts_dir = Path.home() / "Library" / "Fonts"
-    fonts_dir.mkdir(parents=True, exist_ok=True)
-    dest = fonts_dir / path.name
-    try:
-        shutil.copy2(path, dest)
-    except OSError:
-        return None
-    return family_name
-
-
-def ensure_app_fonts(app_root: Path) -> Optional[str]:
-    """
-    Обеспечивает наличие шрифта в app_root/assets/fonts и регистрирует его.
-    При exe — копирует из _MEIPASS. При dev — ищет в app_root или в корне репозитория.
-    :return: имя семейства шрифта или None (использовать fallback).
-    """
-    app_root = Path(app_root)
-    assets_fonts = app_root / "assets" / "fonts"
-    if getattr(sys, "frozen", False):
-        bundle_fonts = Path(sys._MEIPASS) / "assets" / "fonts"  # type: ignore[attr-defined]
-        assets_fonts.mkdir(parents=True, exist_ok=True)
-        src = bundle_fonts / APP_FONT_REGULAR
-        if src.is_file():
-            try:
-                shutil.copy2(src, assets_fonts / APP_FONT_REGULAR)
-            except OSError:
-                pass
-    font_path = assets_fonts / APP_FONT_REGULAR
-    if not font_path.is_file() and not getattr(sys, "frozen", False):
-        _project_root = Path(__file__).resolve().parents[3]  # bootstrap -> gui -> src -> project root
-        font_path = _project_root / "assets" / "fonts" / APP_FONT_REGULAR
-    if not font_path.is_file():
-        return None
-    return register_font(font_path)
-
-
-class GuiFontPreparator:
-    """Подготавливает шрифты приложения для использования в UI (регистрация, копирование при необходимости)."""
-
-    def prepare(self, app_root: Path) -> str | None:
-        """
-        Обеспечивает наличие и регистрацию шрифта приложения.
-
-        :param app_root: корень приложения (Path).
-        :return: имя семейства шрифта для UI или None (использовать fallback).
-        """
-        return ensure_app_fonts(Path(app_root))
+"""Кроссплатформенная регистрация кастомных шрифтов для Tkinter.Используется при подготовке GUI (bootstrap). Регистрирует шрифт из .ttf/.otf;на Windows — загрузка в сессию, на Linux/macOS — копирование в каталог шрифтов пользователя."""from __future__ import annotationsimport shutilimport structimport subprocessimport sysfrom pathlib import Pathfrom typing import OptionalAPP_FONT_REGULAR = "JetBrainsMono-Regular.ttf"def get_font_family_from_file(path: Path) -> Optional[str]:    """    Читает имя семейства шрифта из TTF/OTF (таблица 'name', nameID 1).    Возвращает None при ошибке или если имя не найдено.    """    path = Path(path)    if not path.is_file():        return None    try:        with open(path, "rb") as f:            data = f.read()    except OSError:        return None    if len(data) < 12:        return None    num_tables = struct.unpack_from(">H", data, 4)[0]    if len(data) < 12 + num_tables * 16:        return None    name_offset = None    name_length = None    for i in range(num_tables):        off = 12 + i * 16        tag = data[off : off + 4].decode("ascii", errors="ignore")        if tag == "name":            name_offset = struct.unpack_from(">I", data, off + 8)[0]            name_length = struct.unpack_from(">I", data, off + 12)[0]            break    if name_offset is None or name_length is None or name_offset + name_length > len(data):        return None    name_data = data[name_offset : name_offset + name_length]    if len(name_data) < 6:        return None    format_ = struct.unpack_from(">H", name_data, 0)[0]    count = struct.unpack_from(">H", name_data, 2)[0]    string_offset = struct.unpack_from(">H", name_data, 4)[0]    for i in range(count):        rec_off = 6 + i * 12        if rec_off + 12 > len(name_data):            break        platform_id, encoding_id, language_id, name_id, length, offset = struct.unpack_from(            ">HHHHHH", name_data, rec_off        )        if name_id != 1:            continue        start = string_offset + offset        if start < 0 or start + length > len(name_data):            continue        raw = name_data[start : start + length]        if platform_id == 3:            try:                return raw.decode("utf-16-be").strip("\x00")            except UnicodeDecodeError:                continue        if platform_id == 0:            try:                return raw.decode("utf-16-be").strip("\x00")            except UnicodeDecodeError:                continue        if platform_id == 1 and raw:            try:                return raw.decode("mac-roman", errors="replace").strip("\x00")            except Exception:                continue    return Nonedef register_font(path: Path, family_name: Optional[str] = None) -> Optional[str]:    """    Регистрирует шрифт из файла и возвращает имя семейства для использования в Tk.    Windows: загрузка в сессию. Linux/macOS: копирование в каталог шрифтов пользователя.    """    path = Path(path).resolve()    if not path.is_file():        return None    suffix = path.suffix.lower()    if suffix not in (".ttf", ".otf"):        return None    name = family_name or get_font_family_from_file(path)    if not name:        return None    if sys.platform == "win32":        return _register_font_windows(path, name)    if sys.platform == "darwin":        return _register_font_macos(path, name)    if sys.platform == "linux":        return _register_font_linux(path, name)    return namedef _register_font_windows(path: Path, family_name: str) -> Optional[str]:    try:        import ctypes        gdi32 = ctypes.windll.gdi32  # type: ignore[attr-defined]        FR_PRIVATE = 0x10        added = gdi32.AddFontResourceExW(str(path), FR_PRIVATE, 0)        if added:            return family_name        return None    except Exception:        return Nonedef _register_font_linux(path: Path, family_name: str) -> Optional[str]:    fonts_dir = Path.home() / ".local" / "share" / "fonts"    fonts_dir.mkdir(parents=True, exist_ok=True)    dest = fonts_dir / path.name    try:        shutil.copy2(path, dest)    except OSError:        return None    try:        subprocess.run(            ["fc-cache", "-f", "-v"],            capture_output=True,            timeout=30,            check=False,        )    except (FileNotFoundError, subprocess.TimeoutExpired):        pass    return family_namedef _register_font_macos(path: Path, family_name: str) -> Optional[str]:    fonts_dir = Path.home() / "Library" / "Fonts"    fonts_dir.mkdir(parents=True, exist_ok=True)    dest = fonts_dir / path.name    try:        shutil.copy2(path, dest)    except OSError:        return None    return family_namedef ensure_app_fonts(app_root: Path) -> Optional[str]:    """    Обеспечивает наличие шрифта в app_root/assets/fonts и регистрирует его.    При exe — копирует из _MEIPASS. При dev — ищет в app_root или в корне репозитория.    :return: имя семейства шрифта или None (использовать fallback).    """    app_root = Path(app_root)    assets_fonts = app_root / "assets" / "fonts"    if getattr(sys, "frozen", False):        bundle_fonts = Path(sys._MEIPASS) / "assets" / "fonts"  # type: ignore[attr-defined]        assets_fonts.mkdir(parents=True, exist_ok=True)        src = bundle_fonts / APP_FONT_REGULAR        if src.is_file():            try:                shutil.copy2(src, assets_fonts / APP_FONT_REGULAR)            except OSError:                pass    font_path = assets_fonts / APP_FONT_REGULAR    if not font_path.is_file() and not getattr(sys, "frozen", False):        _project_root = Path(__file__).resolve().parents[3]  # bootstrap -> gui -> src -> project root        font_path = _project_root / "assets" / "fonts" / APP_FONT_REGULAR    if not font_path.is_file():        return None    return register_font(font_path)class GuiFontPreparator:    """Подготавливает шрифты приложения для использования в UI (регистрация, копирование при необходимости)."""    def prepare(self, app_root: Path) -> str | None:        """        Обеспечивает наличие и регистрацию шрифта приложения.        :param app_root: корень приложения (Path).        :return: имя семейства шрифта для UI или None (использовать fallback).        """        return ensure_app_fonts(Path(app_root))

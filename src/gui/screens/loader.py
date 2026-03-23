@@ -1,59 +1,1 @@
-"""Экран загрузки: первое, что отображается при запуске GUI."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from tkinter import ttk
-
-from src.gui.screens.base_screen import BaseGUIScreen
-from src.gui.template.styles import FONT_FAMILY_UI, PALETTE, UI_FONT_SIZE
-from src.gui.utils.tk_scaled_image import (
-    label_with_photoimage,
-    load_scaled_photoimage,
-    resolve_logo_asset_path,
-)
-
-# Длинная сторона растра логотипа (логические единицы Tk; с учётом tk scaling в load_scaled_photoimage).
-_LOADER_LOGO_MAX_SIDE_PT = 360
-
-
-class LoadingScreen(BaseGUIScreen):
-    """Экран загрузки при старте приложения."""
-
-    SCREEN_CODE = "loading"
-    SCREEN_TITLE = "unidoc2md"
-
-    def __init__(self, parent: ttk.Frame, **kwargs) -> None:
-        super().__init__(parent, **kwargs)
-        self._logo_photo: tk.PhotoImage | None = None
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        bg = PALETTE["bg_main"]
-        outer = tk.Frame(self, bg=bg, highlightthickness=0, bd=0)
-        outer.pack(fill=tk.BOTH, expand=True)
-
-        inner = tk.Frame(outer, bg=bg, bd=0, highlightthickness=0)
-        inner.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-
-        path = resolve_logo_asset_path()
-        if path is not None:
-            self._logo_photo = load_scaled_photoimage(
-                path, outer, _LOADER_LOGO_MAX_SIDE_PT
-            )
-            if self._logo_photo is not None:
-                label_with_photoimage(
-                    inner,
-                    self._logo_photo,
-                    bg=bg,
-                    bd=0,
-                    highlightthickness=0,
-                ).pack(pady=(0, 0))
-
-        tk.Label(
-            inner,
-            text="Загрузка…",
-            font=(FONT_FAMILY_UI, UI_FONT_SIZE["medium"]),
-            fg=PALETTE["text_soft"],
-            bg=bg,
-        ).pack(pady=(0, 0))
+"""Экран загрузки: первое, что отображается при запуске GUI."""from __future__ import annotationsimport tkinter as tkfrom tkinter import ttkfrom src.gui.screens.base_screen import BaseGUIScreenfrom src.gui.template.styles import FONT_FAMILY_UI, PALETTE, UI_FONT_SIZEfrom src.gui.utils.tk_scaled_image import (    label_with_photoimage,    load_scaled_photoimage,    resolve_logo_asset_path,)# Длинная сторона растра логотипа (логические единицы Tk; с учётом tk scaling в load_scaled_photoimage)._LOADER_LOGO_MAX_SIDE_PT = 360class LoadingScreen(BaseGUIScreen):    """Экран загрузки при старте приложения."""    SCREEN_CODE = "loading"    SCREEN_TITLE = "unidoc2md"    def __init__(self, parent: ttk.Frame, **kwargs) -> None:        super().__init__(parent, **kwargs)        self._logo_photo: tk.PhotoImage | None = None        self._build_ui()    def _build_ui(self) -> None:        bg = PALETTE["bg_main"]        outer = tk.Frame(self, bg=bg, highlightthickness=0, bd=0)        outer.pack(fill=tk.BOTH, expand=True)        inner = tk.Frame(outer, bg=bg, bd=0, highlightthickness=0)        inner.place(relx=0.5, rely=0.5, anchor=tk.CENTER)        path = resolve_logo_asset_path()        if path is not None:            self._logo_photo = load_scaled_photoimage(                path, outer, _LOADER_LOGO_MAX_SIDE_PT            )            if self._logo_photo is not None:                label_with_photoimage(                    inner,                    self._logo_photo,                    bg=bg,                    bd=0,                    highlightthickness=0,                ).pack(pady=(0, 0))        tk.Label(            inner,            text="Загрузка…",            font=(FONT_FAMILY_UI, UI_FONT_SIZE["medium"]),            fg=PALETTE["text_soft"],            bg=bg,        ).pack(pady=(0, 0))

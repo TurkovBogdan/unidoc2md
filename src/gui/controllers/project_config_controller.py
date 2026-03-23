@@ -1,93 +1,1 @@
-"""Контроллер экрана настроек проекта: сохранение, валидация, запуск через application."""
-
-from __future__ import annotations
-
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-from src.gui.application.project_config_actions import get_initial_config, validate_and_save
-from src.gui.controllers.base import BaseScreenController
-from src.gui.screens.base_screen import BaseGUIScreen
-from src.gui.screens.project_config import ProjectConfigScreen
-
-if TYPE_CHECKING:
-    from src.gui.gui_layout import GUILayout
-
-
-class ProjectConfigController(BaseScreenController):
-    """Координирует экран конфига проекта: загрузка/сохранение через application, навигация на запуск."""
-
-    def __init__(
-        self,
-        parent,
-        project_root: Path,
-        layout: GUILayout,
-        *,
-        on_back,
-        on_run_project,
-        project_console=None,
-        pipeline_storage=None,
-    ) -> None:
-        self._project_root = project_root
-        self._layout = layout
-        self._on_back = on_back
-        self._on_run_project = on_run_project
-        self._pipeline_storage = pipeline_storage
-        self._view = ProjectConfigScreen(
-            parent,
-            project_root,
-            on_back,
-            project_console=project_console,
-            pipeline_storage=pipeline_storage,
-            app_layout=layout,
-            on_run_project=on_run_project,
-            on_save=self._handle_save,
-            on_run_click=self._handle_run,
-        )
-        data = get_initial_config(project_root)
-        self._view.load_config_dict(data)
-
-    @property
-    def screen_code(self) -> str:
-        return f"project_{self._project_root}"
-
-    @property
-    def screen_title(self) -> str:
-        return self._view.get_screen_title()
-
-    def get_frame(self) -> BaseGUIScreen:
-        return self._view
-
-    def load_config(self) -> None:
-        """Перезагрузить конфиг в форму (при повторном открытии экрана)."""
-        data = get_initial_config(self._project_root)
-        self._view.load_config_dict(data)
-
-    def _handle_save(self) -> None:
-        data = self._view.get_form_data()
-        ok, errors = validate_and_save(self._project_root, data)
-        if not ok and self._layout and self._layout.modals:
-            self._layout.modals.show_info(
-                "Сохранение",
-                "Исправьте ошибки и сохраните снова.",
-                errors=errors,
-            )
-        elif ok and self._layout and self._layout.modals:
-            self._layout.modals.show_info("Сохранение", "Конфиг сохранён.")
-
-    def _handle_run(self) -> None:
-        data = self._view.get_form_data()
-        ok, errors = validate_and_save(self._project_root, data)
-        if not ok:
-            if self._layout and self._layout.modals:
-                self._layout.modals.show_info(
-                    "Сохранение",
-                    "Исправьте ошибки и сохраните снова.",
-                    errors=errors,
-                )
-            return
-        if self._pipeline_storage is not None and self._pipeline_storage.get_current() is not None:
-            if self._layout and self._layout.modals:
-                self._layout.modals.show_info("Запуск", "Уже выполняется другой проект.")
-            return
-        self._on_run_project(self._project_root)
+"""Контроллер экрана настроек проекта: сохранение, валидация, запуск через application."""from __future__ import annotationsfrom pathlib import Pathfrom typing import TYPE_CHECKINGfrom src.gui.application.project_config_actions import get_initial_config, validate_and_savefrom src.gui.controllers.base import BaseScreenControllerfrom src.gui.screens.base_screen import BaseGUIScreenfrom src.gui.screens.project_config import ProjectConfigScreenif TYPE_CHECKING:    from src.gui.gui_layout import GUILayoutclass ProjectConfigController(BaseScreenController):    """Координирует экран конфига проекта: загрузка/сохранение через application, навигация на запуск."""    def __init__(        self,        parent,        project_root: Path,        layout: GUILayout,        *,        on_back,        on_run_project,        project_console=None,        pipeline_storage=None,    ) -> None:        self._project_root = project_root        self._layout = layout        self._on_back = on_back        self._on_run_project = on_run_project        self._pipeline_storage = pipeline_storage        self._view = ProjectConfigScreen(            parent,            project_root,            on_back,            project_console=project_console,            pipeline_storage=pipeline_storage,            app_layout=layout,            on_run_project=on_run_project,            on_save=self._handle_save,            on_run_click=self._handle_run,        )        data = get_initial_config(project_root)        self._view.load_config_dict(data)    @property    def screen_code(self) -> str:        return f"project_{self._project_root}"    @property    def screen_title(self) -> str:        return self._view.get_screen_title()    def get_frame(self) -> BaseGUIScreen:        return self._view    def load_config(self) -> None:        """Перезагрузить конфиг в форму (при повторном открытии экрана)."""        data = get_initial_config(self._project_root)        self._view.load_config_dict(data)    def _handle_save(self) -> None:        data = self._view.get_form_data()        ok, errors = validate_and_save(self._project_root, data)        if not ok and self._layout and self._layout.modals:            self._layout.modals.show_info(                "Сохранение",                "Исправьте ошибки и сохраните снова.",                errors=errors,            )        elif ok and self._layout and self._layout.modals:            self._layout.modals.show_info("Сохранение", "Конфиг сохранён.")    def _handle_run(self) -> None:        data = self._view.get_form_data()        ok, errors = validate_and_save(self._project_root, data)        if not ok:            if self._layout and self._layout.modals:                self._layout.modals.show_info(                    "Сохранение",                    "Исправьте ошибки и сохраните снова.",                    errors=errors,                )            return        if self._pipeline_storage is not None and self._pipeline_storage.get_current() is not None:            if self._layout and self._layout.modals:                self._layout.modals.show_info("Запуск", "Уже выполняется другой проект.")            return        self._on_run_project(self._project_root)

@@ -1,51 +1,1 @@
-"""Базовый класс полноценного экрана приложения (screen)."""
-
-from __future__ import annotations
-
-from pathlib import Path
-from tkinter import ttk
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from src.gui.gui_layout import GUILayout
-
-
-class BaseGUIScreen(ttk.Frame):
-    """
-    Базовый класс для полноценного экрана на всё приложение.
-
-    Экран — самостоятельный слой UI, занимающий область контента (content),
-    переключается навигацией. Наследники задают SCREEN_CODE и SCREEN_TITLE,
-    при необходимости переопределяют get_screen_title(); реализуют _build_ui().
-    """
-
-    SCREEN_CODE: str = ""
-    SCREEN_TITLE: str = "unidoc2md"
-
-    def __init__(
-        self,
-        parent: ttk.Frame,
-        *,
-        app_root: Path | None = None,
-        app_layout: GUILayout | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(parent, **kwargs)
-        self._app_root = app_root
-        self._app_layout = app_layout
-
-    @classmethod
-    def get_screen_code(cls) -> str:
-        """Уникальный код экрана (для навигации и идентификации)."""
-        return cls.SCREEN_CODE
-
-    def get_screen_title(self) -> str:
-        """Заголовок окна приложения при показе этого экрана."""
-        return self.SCREEN_TITLE
-
-    def _build_ui(self) -> None:
-        """
-        Строит интерфейс экрана. Переопределяется в наследниках.
-        Вызывается из __init__ после инициализации базового класса.
-        """
-        pass
+"""Базовый класс полноценного экрана приложения (screen)."""from __future__ import annotationsfrom pathlib import Pathfrom tkinter import ttkfrom typing import TYPE_CHECKING, Anyif TYPE_CHECKING:    from src.gui.gui_layout import GUILayoutclass BaseGUIScreen(ttk.Frame):    """    Базовый класс для полноценного экрана на всё приложение.    Экран — самостоятельный слой UI, занимающий область контента (content),    переключается навигацией. Наследники задают SCREEN_CODE и SCREEN_TITLE,    при необходимости переопределяют get_screen_title(); реализуют _build_ui().    """    SCREEN_CODE: str = ""    SCREEN_TITLE: str = "unidoc2md"    def __init__(        self,        parent: ttk.Frame,        *,        app_root: Path | None = None,        app_layout: GUILayout | None = None,        **kwargs: Any,    ) -> None:        super().__init__(parent, **kwargs)        self._app_root = app_root        self._app_layout = app_layout    @classmethod    def get_screen_code(cls) -> str:        """Уникальный код экрана (для навигации и идентификации)."""        return cls.SCREEN_CODE    def get_screen_title(self) -> str:        """Заголовок окна приложения при показе этого экрана."""        return self.SCREEN_TITLE    def _build_ui(self) -> None:        """        Строит интерфейс экрана. Переопределяется в наследниках.        Вызывается из __init__ после инициализации базового класса.        """        pass

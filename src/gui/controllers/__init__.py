@@ -1,19 +1,1 @@
-"""Контроллеры экранов (MVP Presenter): по одному на экран."""
-
-from .base import BaseScreenController
-from .model_settings_controller import ModelSettingsController
-from .model_settings_detail_controller import ModelSettingsDetailController
-from .project_config_controller import ProjectConfigController
-from .project_list_controller import ProjectListController
-from .project_pipeline_controller import ProjectPipelineController
-from .settings_controller import SettingsController
-
-__all__ = [
-    "BaseScreenController",
-    "ModelSettingsController",
-    "ModelSettingsDetailController",
-    "ProjectConfigController",
-    "ProjectListController",
-    "ProjectPipelineController",
-    "SettingsController",
-]
+"""Контроллеры экранов (MVP Presenter): по одному на экран."""from .base import BaseScreenControllerfrom .model_settings_controller import ModelSettingsControllerfrom .model_settings_detail_controller import ModelSettingsDetailControllerfrom .project_config_controller import ProjectConfigControllerfrom .project_list_controller import ProjectListControllerfrom .project_pipeline_controller import ProjectPipelineControllerfrom .settings_controller import SettingsController__all__ = [    "BaseScreenController",    "ModelSettingsController",    "ModelSettingsDetailController",    "ProjectConfigController",    "ProjectListController",    "ProjectPipelineController",    "SettingsController",]

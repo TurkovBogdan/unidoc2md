@@ -1,24 +1,1 @@
-"""Реестр экранов: имя (screen_code) -> фрейм для переключения."""
-
-from __future__ import annotations
-
-from tkinter import ttk
-
-
-class ScreenRegistry:
-    """Хранит зарегистрированные экраны по коду. Используется роутером для pack/unpack."""
-
-    def __init__(self) -> None:
-        self._frames: dict[str, ttk.Frame] = {}
-
-    def register(self, screen_code: str, frame: ttk.Frame) -> None:
-        self._frames[screen_code] = frame
-
-    def get(self, screen_code: str) -> ttk.Frame | None:
-        return self._frames.get(screen_code)
-
-    def has(self, screen_code: str) -> bool:
-        return screen_code in self._frames
-
-    def names(self) -> set[str]:
-        return set(self._frames.keys())
+"""Реестр экранов: имя (screen_code) -> фрейм для переключения."""from __future__ import annotationsfrom tkinter import ttkclass ScreenRegistry:    """Хранит зарегистрированные экраны по коду. Используется роутером для pack/unpack."""    def __init__(self) -> None:        self._frames: dict[str, ttk.Frame] = {}    def register(self, screen_code: str, frame: ttk.Frame) -> None:        self._frames[screen_code] = frame    def get(self, screen_code: str) -> ttk.Frame | None:        return self._frames.get(screen_code)    def has(self, screen_code: str) -> bool:        return screen_code in self._frames    def names(self) -> set[str]:        return set(self._frames.keys())

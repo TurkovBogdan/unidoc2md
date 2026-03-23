@@ -1,160 +1,1 @@
-"""Вызовы backend из GUI."""
-
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Any
-
-from src.core import AppConfig
-from src.core.models.core_config import CoreConfig
-from src.modules.llm_providers.module import LLMProvidersConfig, llm_providers_set_providers_config
-from src.modules.yandex_ocr.module import YandexOCRConfig, yandex_ocr_set_api_config
-from src.modules.file_discovery import DiscoveryService
-from src.modules.file_discovery.models import DiscoveryConfig
-from src.modules.file_extract import get_supported_extensions
-from src.modules.project import (
-    ProjectInfo,
-    ProjectManager,
-    load_project_config,
-    load_project_config_dict,
-    save_project_config_dict,
-    validate_project_config,
-)
-
-
-def _get_token_status() -> dict[str, bool]:
-    """Заглушка: статус токенов не проверяется."""
-    return {}
-
-
-def _docs_count_for_project(project_root: Path) -> int:
-    """Подсчёт файлов в docs/ проекта: те же расширения и recursive_search, что в табе «Файлы проекта»."""
-    docs_dir = project_root / "docs"
-    if not docs_dir.is_dir():
-        return 0
-    try:
-        config = load_project_config(project_root)
-        extensions = get_supported_extensions()
-        if not extensions:
-            extensions = {"*"}
-        discovery = DiscoveryService()
-        discovery_config = DiscoveryConfig(
-            path=str(docs_dir),
-            extensions=extensions,
-            hash=False,
-            recursive_search=config.discovery.get("recursive_search", False),
-        )
-        return len(discovery.discover_files(discovery_config))
-    except Exception:
-        return 0
-
-
-def load_projects(app_root: Path) -> list[ProjectInfo]:
-    """Возвращает список проектов с путём и кол-вом файлов для обработки (docs_count)."""
-    projects = ProjectManager(app_root).list_projects()
-    return [
-        ProjectInfo(id=p.id, path=p.path, docs_count=_docs_count_for_project(p.path))
-        for p in projects
-    ]
-
-
-def remove_project(app_root: Path, project_root: Path) -> None:
-    """Удаляет проект по его корневому пути."""
-    ProjectManager(app_root).delete(project_root)
-
-
-def create_project(app_root: Path, name: str) -> Path:
-    """Создаёт проект с настройками по умолчанию. Возвращает project_root."""
-    return ProjectManager(app_root).create(name)
-
-
-def validate_config(project_root: Path, config_data: dict | None = None) -> tuple[bool, list[str], list[str]]:
-    """Валидирует конфиг. Возвращает (is_valid, errors, warnings)."""
-    result = validate_project_config(project_root, config_data=config_data, check_tokens=True)
-    return result.is_valid, result.errors, result.warnings
-
-
-def get_api_token_status() -> dict[str, bool]:
-    """Статус заполненности API-токенов по провайдерам (заглушка)."""
-    return _get_token_status()
-
-
-def load_app_config_dict() -> dict[str, Any]:
-    """Загружает app.ini в словарь для экрана настроек. Требует предварительного AppConfigStore.load_or_create()."""
-    from src.core import AppConfigStore
-
-    cfg = AppConfigStore.get()
-    lp = cfg.llm_providers
-    yo = cfg.yandex_ocr
-    return {
-        "core": {
-            "debug": cfg.core.debug,
-            "log_level": cfg.core.log_level or "DEBUG",
-            "console_log_level": cfg.core.console_log_level or "INFO",
-        },
-        "llm_providers": {
-            "gateway_timeout": getattr(lp, "gateway_timeout", 30),
-            "anthropic_provider_enabled": lp.anthropic_provider_enabled,
-            "anthropic_api_key": lp.anthropic_api_key or "",
-            "google_provider_enabled": lp.google_provider_enabled,
-            "google_api_key": lp.google_api_key or "",
-            "openai_provider_enabled": lp.openai_provider_enabled,
-            "openai_api_key": lp.openai_api_key or "",
-            "xai_provider_enabled": lp.xai_provider_enabled,
-            "xai_team_id": lp.xai_team_id or "",
-            "xai_management_key": lp.xai_management_key or "",
-            "xai_api_key": lp.xai_api_key or "",
-        },
-        "yandex_ocr": {
-            "provider_enabled": yo.provider_enabled,
-            "key_id": yo.key_id or "",
-            "key_secret": yo.key_secret or "",
-        },
-    }
-
-
-def _gateway_timeout_from_lp(lp: dict[str, Any]) -> int:
-    """Извлечь gateway_timeout из словаря llm_providers (1–600, по умолчанию 30)."""
-    try:
-        val = int(lp.get("gateway_timeout", 30))
-    except (TypeError, ValueError):
-        val = 30
-    return max(1, min(600, val))
-
-
-def save_app_config_dict(data: dict[str, Any]) -> None:
-    """Сохраняет словарь настроек в app.ini и обновляет runtime-конфиг во всех store:
-    AppConfigStore, llm_providers, yandex_ocr."""
-    from src.core import AppConfigStore
-
-    core = data.get("core") or {}
-    lp = data.get("llm_providers") or {}
-    yo = data.get("yandex_ocr") or {}
-    config = AppConfig(
-        core=CoreConfig(
-            debug=bool(core.get("debug", False)),
-            log_level=str(core.get("log_level", "DEBUG")).strip() or "DEBUG",
-            console_log_level=str(core.get("console_log_level", "INFO")).strip() or "INFO",
-        ),
-        llm_providers=LLMProvidersConfig(
-            gateway_timeout=_gateway_timeout_from_lp(lp),
-            anthropic_provider_enabled=bool(lp.get("anthropic_provider_enabled", False)),
-            anthropic_api_key=str(lp.get("anthropic_api_key", "")),
-            google_provider_enabled=bool(lp.get("google_provider_enabled", False)),
-            google_api_key=str(lp.get("google_api_key", "")),
-            openai_provider_enabled=bool(lp.get("openai_provider_enabled", False)),
-            openai_api_key=str(lp.get("openai_api_key", "")),
-            xai_provider_enabled=bool(lp.get("xai_provider_enabled", False)),
-            xai_team_id=str(lp.get("xai_team_id", "")),
-            xai_management_key=str(lp.get("xai_management_key", "")),
-            xai_api_key=str(lp.get("xai_api_key", "")),
-        ),
-        yandex_ocr=YandexOCRConfig(
-            provider_enabled=bool(yo.get("provider_enabled", False)),
-            key_id=str(yo.get("key_id", "")),
-            key_secret=str(yo.get("key_secret", "")),
-        ),
-    )
-    AppConfigStore.save(config)
-    llm_providers_set_providers_config(config.llm_providers)
-    yandex_ocr_set_api_config(config.yandex_ocr)
+"""Вызовы backend из GUI."""from __future__ import annotationsfrom pathlib import Pathfrom typing import Anyfrom src.core import AppConfigfrom src.core.models.core_config import CoreConfigfrom src.modules.llm_providers.module import LLMProvidersConfig, llm_providers_set_providers_configfrom src.modules.yandex_ocr.module import YandexOCRConfig, yandex_ocr_set_api_configfrom src.modules.file_discovery import DiscoveryServicefrom src.modules.file_discovery.models import DiscoveryConfigfrom src.modules.file_extract import get_supported_extensionsfrom src.modules.project import (    ProjectInfo,    ProjectManager,    load_project_config,    load_project_config_dict,    save_project_config_dict,    validate_project_config,)def _get_token_status() -> dict[str, bool]:    """Заглушка: статус токенов не проверяется."""    return {}def _docs_count_for_project(project_root: Path) -> int:    """Подсчёт файлов в docs/ проекта: те же расширения и recursive_search, что в табе «Файлы проекта»."""    docs_dir = project_root / "docs"    if not docs_dir.is_dir():        return 0    try:        config = load_project_config(project_root)        extensions = get_supported_extensions()        if not extensions:            extensions = {"*"}        discovery = DiscoveryService()        discovery_config = DiscoveryConfig(            path=str(docs_dir),            extensions=extensions,            hash=False,            recursive_search=config.discovery.get("recursive_search", False),        )        return len(discovery.discover_files(discovery_config))    except Exception:        return 0def load_projects(app_root: Path) -> list[ProjectInfo]:    """Возвращает список проектов с путём и кол-вом файлов для обработки (docs_count)."""    projects = ProjectManager(app_root).list_projects()    return [        ProjectInfo(id=p.id, path=p.path, docs_count=_docs_count_for_project(p.path))        for p in projects    ]def remove_project(app_root: Path, project_root: Path) -> None:    """Удаляет проект по его корневому пути."""    ProjectManager(app_root).delete(project_root)def create_project(app_root: Path, name: str) -> Path:    """Создаёт проект с настройками по умолчанию. Возвращает project_root."""    return ProjectManager(app_root).create(name)def validate_config(project_root: Path, config_data: dict | None = None) -> tuple[bool, list[str], list[str]]:    """Валидирует конфиг. Возвращает (is_valid, errors, warnings)."""    result = validate_project_config(project_root, config_data=config_data, check_tokens=True)    return result.is_valid, result.errors, result.warningsdef get_api_token_status() -> dict[str, bool]:    """Статус заполненности API-токенов по провайдерам (заглушка)."""    return _get_token_status()def load_app_config_dict() -> dict[str, Any]:    """Загружает app.ini в словарь для экрана настроек. Требует предварительного AppConfigStore.load_or_create()."""    from src.core import AppConfigStore    cfg = AppConfigStore.get()    lp = cfg.llm_providers    yo = cfg.yandex_ocr    return {        "core": {            "debug": cfg.core.debug,            "log_level": cfg.core.log_level or "DEBUG",            "console_log_level": cfg.core.console_log_level or "INFO",        },        "llm_providers": {            "gateway_timeout": getattr(lp, "gateway_timeout", 30),            "anthropic_provider_enabled": lp.anthropic_provider_enabled,            "anthropic_api_key": lp.anthropic_api_key or "",            "google_provider_enabled": lp.google_provider_enabled,            "google_api_key": lp.google_api_key or "",            "openai_provider_enabled": lp.openai_provider_enabled,            "openai_api_key": lp.openai_api_key or "",            "xai_provider_enabled": lp.xai_provider_enabled,            "xai_team_id": lp.xai_team_id or "",            "xai_management_key": lp.xai_management_key or "",            "xai_api_key": lp.xai_api_key or "",        },        "yandex_ocr": {            "provider_enabled": yo.provider_enabled,            "key_id": yo.key_id or "",            "key_secret": yo.key_secret or "",        },    }def _gateway_timeout_from_lp(lp: dict[str, Any]) -> int:    """Извлечь gateway_timeout из словаря llm_providers (1–600, по умолчанию 30)."""    try:        val = int(lp.get("gateway_timeout", 30))    except (TypeError, ValueError):        val = 30    return max(1, min(600, val))def save_app_config_dict(data: dict[str, Any]) -> None:    """Сохраняет словарь настроек в app.ini и обновляет runtime-конфиг во всех store:    AppConfigStore, llm_providers, yandex_ocr."""    from src.core import AppConfigStore    core = data.get("core") or {}    lp = data.get("llm_providers") or {}    yo = data.get("yandex_ocr") or {}    config = AppConfig(        core=CoreConfig(            debug=bool(core.get("debug", False)),            log_level=str(core.get("log_level", "DEBUG")).strip() or "DEBUG",            console_log_level=str(core.get("console_log_level", "INFO")).strip() or "INFO",        ),        llm_providers=LLMProvidersConfig(            gateway_timeout=_gateway_timeout_from_lp(lp),            anthropic_provider_enabled=bool(lp.get("anthropic_provider_enabled", False)),            anthropic_api_key=str(lp.get("anthropic_api_key", "")),            google_provider_enabled=bool(lp.get("google_provider_enabled", False)),            google_api_key=str(lp.get("google_api_key", "")),            openai_provider_enabled=bool(lp.get("openai_provider_enabled", False)),            openai_api_key=str(lp.get("openai_api_key", "")),            xai_provider_enabled=bool(lp.get("xai_provider_enabled", False)),            xai_team_id=str(lp.get("xai_team_id", "")),            xai_management_key=str(lp.get("xai_management_key", "")),            xai_api_key=str(lp.get("xai_api_key", "")),        ),        yandex_ocr=YandexOCRConfig(            provider_enabled=bool(yo.get("provider_enabled", False)),            key_id=str(yo.get("key_id", "")),            key_secret=str(yo.get("key_secret", "")),        ),    )    AppConfigStore.save(config)    llm_providers_set_providers_config(config.llm_providers)    yandex_ocr_set_api_config(config.yandex_ocr)

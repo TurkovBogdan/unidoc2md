@@ -1,79 +1,1 @@
-"""Модалка подтверждения действия: заголовок, сообщение, кнопки «Отмена» и кастомная."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from tkinter import ttk
-
-from src.gui.template.styles import MODAL_FONT_BODY, MODAL_MESSAGE_WRAP, UI_TYPOGRAPHY, PALETTE
-
-from .base_modal import OverlayModalBase
-
-
-class ConfirmModal(OverlayModalBase):
-    """Подтверждение действия: заголовок, сообщение, кнопки «Отмена» и кастомная (например «Удалить»)."""
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        confirm_text: str = "ОК",
-        cancel_text: str = "Отмена",
-        **kwargs,
-    ) -> None:
-        self._confirm_text = confirm_text
-        self._cancel_text = cancel_text
-        self._on_confirm = None
-        self._title_var: tk.StringVar | None = None
-        self._message_var: tk.StringVar | None = None
-        super().__init__(parent, **kwargs)
-
-    def _build_content(self, container: tk.Misc) -> None:
-        p = PALETTE
-        self._title_var = tk.StringVar(value="Подтверждение")
-        self._message_var = tk.StringVar(value="")
-        pady_after = UI_TYPOGRAPHY["header_2"]["pady_after"]
-        ttk.Label(
-            container,
-            textvariable=self._title_var,
-            style="ModalHeader2.TLabel",
-        ).pack(fill=tk.X, anchor=tk.W, pady=(0, pady_after))
-        tk.Label(
-            container,
-            textvariable=self._message_var,
-            wraplength=MODAL_MESSAGE_WRAP,
-            justify=tk.LEFT,
-            anchor=tk.W,
-            bg=p["bg_elevated"],
-            fg=p["text_primary"],
-            font=MODAL_FONT_BODY,
-        ).pack(fill=tk.X, anchor=tk.W, pady=(0, 16))
-        btn_row = tk.Frame(container, bg=p["bg_elevated"])
-        btn_row.pack(fill=tk.X)
-        self._cancel_btn = ttk.Button(btn_row, text=self._cancel_text, command=self.hide)
-        self._cancel_btn.pack(side=tk.RIGHT, padx=(8, 0))
-        self._confirm_btn = ttk.Button(btn_row, text=self._confirm_text, command=self._on_confirm_click)
-        self._confirm_btn.pack(side=tk.RIGHT)
-
-    def show_confirm(
-        self,
-        title: str,
-        message: str,
-        on_confirm,
-        *,
-        confirm_text: str | None = None,
-        cancel_text: str | None = None,
-    ) -> None:
-        self._title_var.set(title)
-        self._message_var.set(message)
-        self._on_confirm = on_confirm
-        if confirm_text is not None:
-            self._confirm_btn.configure(text=confirm_text)
-        if cancel_text is not None:
-            self._cancel_btn.configure(text=cancel_text)
-        self.show()
-
-    def _on_confirm_click(self) -> None:
-        callback = self._on_confirm
-        self.hide()
-        if callback:
-            callback()
+"""Модалка подтверждения действия: заголовок, сообщение, кнопки «Отмена» и кастомная."""from __future__ import annotationsimport tkinter as tkfrom tkinter import ttkfrom src.gui.template.styles import MODAL_FONT_BODY, MODAL_MESSAGE_WRAP, UI_TYPOGRAPHY, PALETTEfrom .base_modal import OverlayModalBaseclass ConfirmModal(OverlayModalBase):    """Подтверждение действия: заголовок, сообщение, кнопки «Отмена» и кастомная (например «Удалить»)."""    def __init__(        self,        parent: tk.Misc,        confirm_text: str = "ОК",        cancel_text: str = "Отмена",        **kwargs,    ) -> None:        self._confirm_text = confirm_text        self._cancel_text = cancel_text        self._on_confirm = None        self._title_var: tk.StringVar | None = None        self._message_var: tk.StringVar | None = None        super().__init__(parent, **kwargs)    def _build_content(self, container: tk.Misc) -> None:        p = PALETTE        self._title_var = tk.StringVar(value="Подтверждение")        self._message_var = tk.StringVar(value="")        pady_after = UI_TYPOGRAPHY["header_2"]["pady_after"]        ttk.Label(            container,            textvariable=self._title_var,            style="ModalHeader2.TLabel",        ).pack(fill=tk.X, anchor=tk.W, pady=(0, pady_after))        tk.Label(            container,            textvariable=self._message_var,            wraplength=MODAL_MESSAGE_WRAP,            justify=tk.LEFT,            anchor=tk.W,            bg=p["bg_elevated"],            fg=p["text_primary"],            font=MODAL_FONT_BODY,        ).pack(fill=tk.X, anchor=tk.W, pady=(0, 16))        btn_row = tk.Frame(container, bg=p["bg_elevated"])        btn_row.pack(fill=tk.X)        self._cancel_btn = ttk.Button(btn_row, text=self._cancel_text, command=self.hide)        self._cancel_btn.pack(side=tk.RIGHT, padx=(8, 0))        self._confirm_btn = ttk.Button(btn_row, text=self._confirm_text, command=self._on_confirm_click)        self._confirm_btn.pack(side=tk.RIGHT)    def show_confirm(        self,        title: str,        message: str,        on_confirm,        *,        confirm_text: str | None = None,        cancel_text: str | None = None,    ) -> None:        self._title_var.set(title)        self._message_var.set(message)        self._on_confirm = on_confirm        if confirm_text is not None:            self._confirm_btn.configure(text=confirm_text)        if cancel_text is not None:            self._cancel_btn.configure(text=cancel_text)        self.show()    def _on_confirm_click(self) -> None:        callback = self._on_confirm        self.hide()        if callback:            callback()

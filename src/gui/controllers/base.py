@@ -1,41 +1,1 @@
-"""Базовый контракт контроллера экрана (MVP Presenter)."""
-
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
-from tkinter import ttk
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from src.gui.screens.base_screen import BaseGUIScreen
-
-
-class BaseScreenController(ABC):
-    """
-    Контроллер (Presenter) экрана: координирует сценарий и навигацию.
-    Владеет View (экран), передаёт в него callbacks, не содержит доменной логики —
-    она в application/*.
-    """
-
-    @property
-    @abstractmethod
-    def screen_code(self) -> str:
-        """Уникальный код экрана для навигации."""
-        ...
-
-    @property
-    @abstractmethod
-    def screen_title(self) -> str:
-        """Заголовок окна при показе этого экрана."""
-        ...
-
-    @abstractmethod
-    def get_frame(self) -> ttk.Frame | BaseGUIScreen:
-        """Возвращает корневой фрейм/экран для размещения в layout."""
-        ...
-
-    def on_show(self) -> None:
-        """Вызывается при переходе на этот экран (обновление данных и т.п.). Переопределяется при необходимости."""
-        pass
+"""Базовый контракт контроллера экрана (MVP Presenter)."""from __future__ import annotationsfrom abc import ABC, abstractmethodfrom tkinter import ttkfrom typing import TYPE_CHECKINGif TYPE_CHECKING:    from pathlib import Path    from src.gui.screens.base_screen import BaseGUIScreenclass BaseScreenController(ABC):    """    Контроллер (Presenter) экрана: координирует сценарий и навигацию.    Владеет View (экран), передаёт в него callbacks, не содержит доменной логики —    она в application/*.    """    @property    @abstractmethod    def screen_code(self) -> str:        """Уникальный код экрана для навигации."""        ...    @property    @abstractmethod    def screen_title(self) -> str:        """Заголовок окна при показе этого экрана."""        ...    @abstractmethod    def get_frame(self) -> ttk.Frame | BaseGUIScreen:        """Возвращает корневой фрейм/экран для размещения в layout."""        ...    def on_show(self) -> None:        """Вызывается при переходе на этот экран (обновление данных и т.п.). Переопределяется при необходимости."""        pass

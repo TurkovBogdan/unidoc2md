@@ -1,5 +1,1 @@
-"""Состояние GUI: явный контейнер без singleton."""
-
-from .app_state import AppState
-
-__all__ = ["AppState"]
+"""Состояние GUI: явный контейнер без singleton."""from .app_state import AppState__all__ = ["AppState"]
