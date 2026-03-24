@@ -1,0 +1,10 @@
+{
+  "home.title": "项目",
+  "home.files.one": "1 个文件",
+  "home.files.zero": "0 个文件",
+  "home.files.many": "{count} 个文件",
+  "home.delete.title": "删除项目",
+  "home.delete.message": "删除项目「{project_id}」吗？整个项目文件夹及其中的文件都将被删除。",
+  "home.new_project.title": "新建项目",
+  "home.new_project.prompt": "项目名称（将创建在 projects/ 下）："
+}

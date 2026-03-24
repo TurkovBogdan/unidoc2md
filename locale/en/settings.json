@@ -1,0 +1,19 @@
+{
+  "settings.title": "Settings",
+  "settings.tab.application": "Application",
+  "settings.tab.llm_providers": "LLM providers",
+  "settings.tab.ocr_providers": "OCR providers",
+  "settings.application.article": "Configure the interface language, application debug mode, and system log level.\n\nThe interface language is loaded from the app's locale files and stored in the configuration.\n\nDebug mode adds providers for testing and writes more detailed logs; keep it off for normal use.\n\nThe log level controls which messages are written to the log file (DEBUG is the most verbose, CRITICAL only critical events).",
+  "settings.application.label.language": "Interface language",
+  "settings.application.label.debug": "Application debug",
+  "settings.application.label.log_level": "Log level",
+  "settings.application.desc.language": "GUI language; stored in the application configuration.",
+  "settings.application.desc.debug": "Adds providers for testing the app and saves detailed logs about its operation.",
+  "settings.application.desc.log_level": "Minimum level of messages written to the log file.",
+  "settings.llm.label.gateway_timeout": "Gateway timeout",
+  "settings.llm.desc.gateway_timeout": "Maximum time to wait for an API response when calling LLM providers.",
+  "settings.llm.article": "LLM providers are used in pipeline stages that need text models (for example Markdown generation or tagging).\n\nIf a provider offers multimodal models (they accept images), you can use them to recognize text in documents.\n\nIn the row labeled with the provider name, choose \"Enabled\" and enter the API key for each service you use. When \"Disabled\", key fields are hidden. Keys are stored in the application configuration on this machine.\n\nGateway timeout is the maximum wait time for an API response (in seconds). Increase it on slow networks; very high values slow down failure detection.",
+  "settings.ocr.article": "Yandex OCR is used during image processing when the project uses OCR mode.\n\nIn the \"Yandex OCR\" row, choose \"Enabled\" and enter Key ID and Key Secret from Yandex Cloud. When \"Disabled\", the key block is hidden. Without valid keys, Yandex recognition will be unavailable.\n\nKeys are stored locally in app.ini (or the linked configuration store).",
+  "settings.save_modal.title": "Settings",
+  "settings.save_modal.message": "Settings have been saved."
+}

@@ -1,0 +1,10 @@
+{
+  "home.title": "Проекты",
+  "home.files.one": "1 файл",
+  "home.files.zero": "0 файлов",
+  "home.files.many": "{count} файлов",
+  "home.delete.title": "Удаление проекта",
+  "home.delete.message": "Удалить проект '{project_id}'? Будет удалена вся папка проекта вместе с файлами.",
+  "home.new_project.title": "Новый проект",
+  "home.new_project.prompt": "Имя проекта (папка в projects/):"
+}

@@ -1,0 +1,17 @@
+{
+  "project_pipeline.notes_title": "Notes",
+  "project_pipeline.threads_section_title": "Thread settings",
+  "project_pipeline.threads_section_description": "The application supports multi-threaded document processing: more threads finish the project faster, but you may hit API rate limits.",
+  "project_pipeline.create_documents_index_label": "Create documents index",
+  "project_pipeline.create_documents_index_hint": "When \"Yes\", index.md is created in result: for each file — a heading with link, description, date, and tags from metadata.",
+  "project_pipeline.extract_threads_label": "Data extraction",
+  "project_pipeline.extract_threads_hint": "Parallel jobs for extracting text and structure from files (PDF, office formats, etc.). More threads speed up batches on multi-core CPUs but increase disk and memory load.",
+  "project_pipeline.image_processing_threads_label": "Image recognition",
+  "project_pipeline.image_processing_threads_hint": "Parallelism for the image recognition stage (OCR, vision, preparation for output). Tune to CPU cores and external API limits.",
+  "project_pipeline.yandex_ocr_banner": "When using Yandex OCR for images, only one\nprocessing thread applies — RPS limits on the service side.",
+  "project_pipeline.markdown_threads_label": "Markdown generation",
+  "project_pipeline.markdown_threads_hint": "How many documents are processed at once during Markdown generation, including LLM calls when the mode requires it.",
+  "project_pipeline.tagging_threads_label": "Tagging",
+  "project_pipeline.tagging_threads_hint": "Concurrent LLM requests in \"Batch\" mode (Tagging section). Not used for \"Linear\" or \"Skip\".",
+  "project_pipeline.article": "The General tab: index in result and parallelism per pipeline stage.\n\nCreate documents index — when \"Yes\", index.md is created in result: for each document a block with linked heading, description, date, and tags.\n\nDiscovery always runs in a single thread — there is no separate setting.\n\nData extraction — parallel processing of different source files. Image recognition — parallel processing of images on that stage. Markdown generation — parallel processing on the Markdown output stage. Tagging — maximum concurrent LLM calls in \"Batch\" mode in the Tagging section (linear vs batch is chosen there).\n\nIf Yandex OCR is selected for images, only one thread is effectively used on that stage due to service limits."
+}

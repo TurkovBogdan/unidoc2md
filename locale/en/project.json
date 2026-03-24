@@ -1,0 +1,23 @@
+{
+  "project.page_title": "Project: {name}",
+  "project.window_title": "unidoc2md | {name}",
+  "project.tab.file_search": "Project files",
+  "project.tab.pipeline_settings": "General",
+  "project.tab.extract": "Data extraction",
+  "project.tab.data_processing": "Image processing",
+  "project.tab.markdown_generation": "Markdown generation",
+  "project.tab.tagging": "Tagging",
+  "project.discovery.section_title": "Project documents",
+  "project.discovery.refresh": "Refresh",
+  "project.discovery.scope.root_only": "Root only",
+  "project.discovery.nested_folders": "Nested folders",
+  "project.discovery.column.file": "File",
+  "project.discovery.column.format": "Format",
+  "project.discovery.notes_title": "Notes",
+  "project.discovery.article": "Place files to process in the project documents folder; open it with the Open documents button.\n\nAfter adding files, click Refresh — the table lists files in supported formats.\n\nSearch scope: Root only — files directly in the docs folder; Nested folders — recursive subfolders. Markdown output follows the same folder layout.\n\nSupported formats:\n- documents: pdf, docx, odt\n- text: txt, md\n- images: png, jpg, jpeg, webp, bmp, gif, tif, tiff, svg\n\nthere is currently no support for: legacy Word (.doc); spreadsheets and tabular files (xls, csv, and similar); presentations (pptx and similar). RTF and other formats are also unsupported.",
+  "project.save_modal.title": "Save",
+  "project.save_modal.validation_message": "Fix the errors and save again.",
+  "project.save_modal.success_message": "Configuration saved.",
+  "project.run_modal.title": "Run",
+  "project.run_modal.busy_message": "Another project is already running."
+}

@@ -1,0 +1,23 @@
+{
+  "project.page_title": "项目：{name}",
+  "project.window_title": "unidoc2md | {name}",
+  "project.tab.file_search": "项目文件",
+  "project.tab.pipeline_settings": "常规",
+  "project.tab.extract": "数据提取",
+  "project.tab.data_processing": "图像处理",
+  "project.tab.markdown_generation": "生成 Markdown",
+  "project.tab.tagging": "标注",
+  "project.discovery.section_title": "项目文档",
+  "project.discovery.refresh": "刷新",
+  "project.discovery.scope.root_only": "仅根目录",
+  "project.discovery.nested_folders": "子文件夹",
+  "project.discovery.column.file": "文件",
+  "project.discovery.column.format": "格式",
+  "project.discovery.notes_title": "说明",
+  "project.discovery.article": "请将待处理文件放入项目文档文件夹；可用「打开文档」按钮打开该文件夹。\n\n添加文件后点击「刷新」——表格中会列出受支持格式的文件。\n\n搜索范围：「仅根目录」——仅 docs 文件夹中的文件；「子文件夹」——递归包含子目录。Markdown 输出目录结构与源文件夹一致。\n\n支持格式：\n- 文档：pdf、docx、odt\n- 文本：txt、md\n- 图像：png、jpg、jpeg、webp、bmp、gif、tif、tiff、svg\n\n目前不支持：旧版 Word（.doc）；表格与电子表格（xls、csv 等）；演示文稿（pptx 等）。亦不支持 rtf 等格式。",
+  "project.save_modal.title": "保存",
+  "project.save_modal.validation_message": "请修正错误后再次保存。",
+  "project.save_modal.success_message": "配置已保存。",
+  "project.run_modal.title": "运行",
+  "project.run_modal.busy_message": "另一个项目正在运行。"
+}

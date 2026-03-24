@@ -1,0 +1,17 @@
+{
+  "project_pipeline.notes_title": "说明",
+  "project_pipeline.threads_section_title": "线程设置",
+  "project_pipeline.threads_section_description": "应用支持多线程处理文档：线程越多，项目完成得越快，但可能遇到 API 限流。",
+  "project_pipeline.create_documents_index_label": "创建文档索引",
+  "project_pipeline.create_documents_index_hint": "选择「是」时在 result 中生成 index.md：每个文件对应标题链接、说明、日期及元数据中的标签列表。",
+  "project_pipeline.extract_threads_label": "数据提取",
+  "project_pipeline.extract_threads_hint": "从文件提取文本与结构的并行任务数（PDF、办公格式等）。线程越多在多核 CPU 上越快，但会增加磁盘与内存压力。",
+  "project_pipeline.image_processing_threads_label": "图像识别",
+  "project_pipeline.image_processing_threads_hint": "图像识别阶段（OCR、vision、输出前处理）的并行度。请按核心数与外部 API 限制调整。",
+  "project_pipeline.yandex_ocr_banner": "使用 Yandex OCR 处理图像时，实际仅\n一个处理线程 — 受服务端 RPS 限制。",
+  "project_pipeline.markdown_threads_label": "生成 Markdown",
+  "project_pipeline.markdown_threads_hint": "生成 Markdown 阶段同时处理的文档数（若模式需要则含 LLM 调用）。",
+  "project_pipeline.tagging_threads_label": "标注",
+  "project_pipeline.tagging_threads_hint": "「批量」模式下对 LLM 的并发请求数（标注页）。「线性」与「跳过」时不使用。",
+  "project_pipeline.article": "「常规」页：result 中的索引与各阶段并行度。\n\n创建文档索引 — 选「是」时在 result 生成 index.md：每个文档一块，含标题链接、说明、日期与标签。\n\n发现文件（discovery）始终单线程 — 无单独设置。\n\n数据提取 — 并行处理不同源文件。图像识别 — 该阶段并行处理图片。生成 Markdown — 输出 Markdown 阶段的并行处理。标注 — 「批量」模式下 LLM 的最大并发调用（线性/批量在标注页选择）。\n\n若图像使用 Yandex OCR，受服务限制该阶段实际仅一个线程。"
+}

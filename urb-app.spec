@@ -9,6 +9,9 @@ _spec_dir = os.path.dirname(os.path.abspath(SPEC))
 _icon_path = os.path.join(_spec_dir, 'assets', 'icon.ico')
 _assets_fonts = os.path.join(_spec_dir, 'assets', 'fonts')
 _assets_data = os.path.join(_spec_dir, 'assets', 'data')
+_assets_locale = os.path.join(_spec_dir, 'assets', 'locale')
+_assets_icons = os.path.join(_spec_dir, 'assets', 'icons')
+_logo_png = os.path.join(_spec_dir, 'assets', 'logo', 'logo.png')
 
 _datas = []
 if os.path.isfile(_icon_path):
@@ -17,6 +20,12 @@ if os.path.isdir(_assets_fonts):
     _datas.append((_assets_fonts, 'assets/fonts'))
 if os.path.isdir(_assets_data):
     _datas.append((_assets_data, 'assets/data'))
+if os.path.isdir(_assets_locale):
+    _datas.append((_assets_locale, 'assets/locale'))
+if os.path.isdir(_assets_icons):
+    _datas.append((_assets_icons, 'assets/icons'))
+if os.path.isfile(_logo_png):
+    _datas.append((_logo_png, 'assets/logo'))
 
 a = Analysis(
     ['main.py'],

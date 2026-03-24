@@ -1,0 +1,23 @@
+{
+  "project.page_title": "Проект: {name}",
+  "project.window_title": "unidoc2md | {name}",
+  "project.tab.file_search": "Файлы проекта",
+  "project.tab.pipeline_settings": "Общее",
+  "project.tab.extract": "Извлечение данных",
+  "project.tab.data_processing": "Обработка изображений",
+  "project.tab.markdown_generation": "Создание разметки",
+  "project.tab.tagging": "Теггирование",
+  "project.discovery.section_title": "Документы проекта",
+  "project.discovery.refresh": "Обновить",
+  "project.discovery.scope.root_only": "Только корень",
+  "project.discovery.nested_folders": "Вложенные папки",
+  "project.discovery.column.file": "Файл",
+  "project.discovery.column.format": "Формат",
+  "project.discovery.notes_title": "Пояснения",
+  "project.discovery.article": "Файлы для обработки поместите в папку документов проекта; открыть её можно кнопкой «Открыть документы».\n\nПосле добавления файлов нажмите «Обновить» — в таблице появятся файлы поддерживаемых форматов.\n\nОбласть поиска: «Только корень» — только файлы в папке docs; «Вложенные папки» — рекурсивный обход подкаталогов. Результаты в Markdown сохраняются с той же структурой папок.\n\nПоддерживаемые форматы:\n- документы: pdf, docx, odt\n- текст: txt, md\n- изображения: png, jpg, jpeg, webp, bmp, gif, tif, tiff, svg\n\nсейчас нет поддержки: старого формата word (.doc); таблиц и электронных таблиц (xls, csv и т.п.); презентаций (pptx и т.п.). также не поддерживаются rtf и другие форматы.",
+  "project.save_modal.title": "Сохранение",
+  "project.save_modal.validation_message": "Исправьте ошибки и сохраните снова.",
+  "project.save_modal.success_message": "Конфиг сохранён.",
+  "project.run_modal.title": "Запуск",
+  "project.run_modal.busy_message": "Уже выполняется другой проект."
+}

@@ -24,4 +24,6 @@ runtime/
 # Internal documentation
 *.md
 !/README.md
+!/docs/**
+!/src/core/docs/**
 *.psd
