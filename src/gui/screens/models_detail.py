@@ -31,6 +31,7 @@ class ModelSettingsDetailScreen(BaseGUIScreen):
     # Wider than default 520px project tabs — two-column model form reads better.
     SETTINGS_WIDTH_PX = 680
     _SEPARATOR_PADX = 12
+    _MODEL_CODE_HEADING_MAX = 56
 
     def __init__(
         self,
@@ -55,11 +56,21 @@ class ModelSettingsDetailScreen(BaseGUIScreen):
         self._build_ui()
         self.bind("<Map>", self._on_screen_show)
 
+    @staticmethod
+    def _short_model_code(code: str, *, max_len: int = _MODEL_CODE_HEADING_MAX) -> str:
+        s = (code or "").strip()
+        if len(s) <= max_len:
+            return s
+        if max_len <= 1:
+            return "…"
+        return s[: max_len - 1] + "…"
+
     def get_screen_title(self) -> str:
         if self._model_key:
             model = self._manager.get_model(self._model_key)
             if model is not None:
-                return f"unidoc2md | {model.provider_code} | {model.code}"
+                code = self._short_model_code(model.code)
+                return f"unidoc2md | {model.provider_code} | {code}"
         return locmsg("models.detail.window_title")
 
     def _update_page_heading(self) -> None:
@@ -72,7 +83,8 @@ class ModelSettingsDetailScreen(BaseGUIScreen):
         if model is None:
             self._title_label.configure(text=locmsg("models.detail.page_title"))
             return
-        self._title_label.configure(text=f"{model.provider_code} | {model.code}")
+        code = self._short_model_code(model.code)
+        self._title_label.configure(text=f"{model.provider_code} | {code}")
 
     def refresh_locale(self) -> None:
         if self._back_btn is not None:
@@ -105,6 +117,7 @@ class ModelSettingsDetailScreen(BaseGUIScreen):
         content_wrap.pack(fill=tk.BOTH, expand=True, padx=(ph, ph), pady=(0, pv))
 
         self._title_label = gui_element_page_title(content_wrap, locmsg("models.detail.page_title"))
+        self._title_label.configure(wraplength=self.SETTINGS_WIDTH_PX)
 
         tpadx, tpady = UI_TABS["content_padding"]
         wrap = ttk.Frame(content_wrap)

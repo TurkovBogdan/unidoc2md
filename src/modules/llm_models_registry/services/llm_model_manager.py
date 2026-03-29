@@ -8,6 +8,8 @@ from pathlib import Path
 
 from ..errors import EmptyModelCodeError, EmptyProviderError
 from ..models.llm_model import LLMModel
+from ..module import ModuleConfigStore
+from ..providers import llm_model_store
 from ..providers.llm_model_store import LLMModelStore
 
 
@@ -72,13 +74,19 @@ def _record_sort_key(item: dict) -> tuple[str, int]:
 
 class LLMModelManager:
     """
-    Registry manager: uses storage; default file path from ModuleConfig (models_store_file).
-    Adds models only when no row exists for provider@name; saves once after the whole batch.
+    Registry operations on ``LLM_MODEL_STORE`` (``module_llm_model_registry_boot`` / ``bind_llm_model_store``).
     """
 
-    def __init__(self, store_file_path: Path | str | None = None) -> None:
-        self._store = LLMModelStore(store_file_path=store_file_path)
-        self._store.load()
+    def __init__(self) -> None:
+        ModuleConfigStore.get()
+        if llm_model_store.LLM_MODEL_STORE is None:
+            raise RuntimeError("llm_models_registry.store_not_bound")
+
+    @property
+    def _store(self) -> LLMModelStore:
+        s = llm_model_store.LLM_MODEL_STORE
+        assert s is not None
+        return s
 
     @staticmethod
     def optional_price_per_million(value: object) -> float | None:
@@ -97,9 +105,37 @@ class LLMModelManager:
         return x
 
     @property
-    def store(self) -> LLMModelStore:
-        """Underlying registry store."""
-        return self._store
+    def store_file_path(self) -> Path:
+        """Path to the registry JSON file."""
+        return self._store.store_file_path
+
+    def get_models(self) -> list[dict]:
+        """All registry rows as dicts, sorted by provider then ``created`` descending."""
+        return self.sort_models_by_created(self._store.data.values())
+
+    def get_models_for_available_providers(self) -> list[dict]:
+        """
+        All registry rows for providers enabled in app LLM config (``is_provider_available``).
+        Includes rows with ``enabled`` false on the model. Same sort as :meth:`get_models`.
+        """
+        from src.core import AppConfigStore
+
+        lp = AppConfigStore.get().llm_providers
+        out: list[dict] = []
+        for item in self.get_models():
+            pc = (item.get("provider") or item.get("provider_code") or "").strip()
+            if not pc or not lp.is_provider_available(pc):
+                continue
+            out.append(item)
+        return out
+
+    def get_available_models(self) -> list[dict]:
+        """
+        Models the app may use: row ``enabled`` is true (default) and provider is
+        available in application LLM config (``is_provider_available``).
+        Same sort order as :meth:`get_models`.
+        """
+        return [item for item in self.get_models_for_available_providers() if item.get("enabled", True)]
 
     def exists(self, model_key: str) -> bool:
         """True if a row exists for the given provider@name key."""
@@ -148,19 +184,19 @@ class LLMModelManager:
             self._store.save()
         return added
 
-    def get_sorted_records(self) -> list[dict]:
+    def sort_models_by_created(self, models: Iterable[object]) -> list[dict]:
         """
-        Registry rows sorted by provider name, then by created descending.
-        Single entry point for UI lists with this ordering.
+        Sort model dict rows by provider name ascending, then ``created`` descending.
+        Non-dict entries in ``models`` are skipped.
         """
-        records = [item for item in self._store.data.values() if isinstance(item, dict)]
+        records = [item for item in models if isinstance(item, dict)]
         return sorted(records, key=_record_sort_key)
 
     def get_provider_codes(self) -> list[str]:
         """Distinct provider codes from the registry, in sorted-record order."""
         seen: set[str] = set()
         codes: list[str] = []
-        for item in self.get_sorted_records():
+        for item in self.get_models():
             p = (item.get("provider") or item.get("provider_code") or "").strip()
             if p and p not in seen:
                 seen.add(p)
@@ -188,8 +224,8 @@ class LLMModelManager:
         )
         return [key[len(prefix) :] for key, _ in sorted_items if key.startswith(prefix)]
 
-    def get_record(self, model_key: str) -> dict | None:
-        """Return the registry row for provider@name or None."""
+    def get_model(self, model_key: str) -> dict | None:
+        """Return the registry row dict for ``provider@name`` or None."""
         key = _normalize_model_key(model_key)
         item = self._store.data.get(key)
         if isinstance(item, dict):
@@ -210,7 +246,7 @@ class LLMModelManager:
         Price ``0`` counts; missing (None / non-numeric) skips that component.
         None if no row or both prices missing.
         """
-        record = self.get_record(model_key)
+        record = self.get_model(model_key)
         if record is None:
             return None
         pi = self.optional_price_per_million(record.get("price_input"))
@@ -268,7 +304,7 @@ class LLMModelManager:
         Input/output cost from registry prices (USD per 1M tokens).
         Output tokens: total_tokens - prompt_tokens (same as get_cost).
         """
-        record = self.get_record(model_key)
+        record = self.get_model(model_key)
         if record is None:
             return None, None
         return self.costs_from_price_per_million_tokens(

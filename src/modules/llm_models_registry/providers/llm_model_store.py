@@ -1,4 +1,4 @@
-"""Load and save the model registry JSON file. Single source of truth: store.data."""
+"""Registry: in-memory ``data``; ``save`` writes it to the JSON file; ``load`` replaces ``data`` from that file."""
 
 from __future__ import annotations
 
@@ -8,24 +8,59 @@ from pathlib import Path
 
 from ..module import ModuleConfigStore
 
+LLM_MODEL_STORE: LLMModelStore | None = None
+
+
+def bind_llm_model_store() -> None:
+    """Set ``LLM_MODEL_STORE`` from ``ModuleConfigStore`` path and ``load()`` (replace instance)."""
+    global LLM_MODEL_STORE
+    resolved = ModuleConfigStore.get().models_store_file.resolve()
+    LLM_MODEL_STORE = LLMModelStore(store_file_path=resolved)
+    LLM_MODEL_STORE.load()
+
+
+def reset_llm_model_store() -> None:
+    """Drop runtime store (tests / before rebinding)."""
+    global LLM_MODEL_STORE
+    LLM_MODEL_STORE = None
+
 
 class LLMModelStore:
-    """
-    Registry storage: one `data` dict (key → record), key = provider@name.
-    Default file path comes from ModuleConfigStore (models_store_file).
-    An alternate path may be passed to the constructor.
-    """
+    """``data`` = ``provider@name`` → row. Runtime: module ``LLM_MODEL_STORE`` (see ``bind_llm_model_store``)."""
 
     def __init__(self, store_file_path: Path | str | None = None) -> None:
-        if store_file_path is not None:
-            self.store_file_path = Path(store_file_path).resolve()
-        else:
-            self.store_file_path = ModuleConfigStore.get().models_store_file
+        if store_file_path is None:
+            raise TypeError(
+                "LLMModelStore() requires store_file_path=... for an isolated store; "
+                "runtime uses module-level LLM_MODEL_STORE (bind_llm_model_store)."
+            )
+        self.store_file_path = Path(store_file_path).resolve()
         self.data: dict[str, dict] = {}
 
     @staticmethod
+    def _read_file_into(path: Path, target: dict[str, dict]) -> None:
+        target.clear()
+        try:
+            if not path.exists():
+                return
+            raw = path.read_text(encoding="utf-8").strip()
+            parsed = json.loads(raw) if raw else {}
+        except (json.JSONDecodeError, OSError):
+            return
+
+        if not isinstance(parsed, dict):
+            return
+        for key, item in parsed.items():
+            if not isinstance(item, dict):
+                continue
+            item_key = LLMModelStore._record_key(item)
+            use_key = item_key or str(key).strip()
+            if not use_key:
+                continue
+            target[use_key] = item
+
+    @staticmethod
     def _serialize_value(obj: object) -> object:
-        """Recursively coerce values to JSON-serializable form (datetime → ISO string)."""
         if isinstance(obj, datetime):
             return obj.isoformat()
         if isinstance(obj, dict):
@@ -36,7 +71,6 @@ class LLMModelStore:
 
     @staticmethod
     def _record_key(item: dict) -> str | None:
-        """Record key: provider@name. None if provider or name is empty."""
         provider = item.get("provider") or item.get("provider_code")
         name = item.get("name") or item.get("code")
         if provider is None or name is None:
@@ -48,35 +82,9 @@ class LLMModelStore:
         return f"{p}@{n}"
 
     def load(self) -> None:
-        """Read store_file_path into self.data."""
-        path = self.store_file_path
-        try:
-            if not path.exists():
-                self.data = {}
-                return
-            raw = path.read_text(encoding="utf-8").strip()
-            parsed = json.loads(raw) if raw else {}
-        except (json.JSONDecodeError, OSError):
-            self.data = {}
-            return
-
-        if isinstance(parsed, dict):
-            normalized: dict[str, dict] = {}
-            for key, item in parsed.items():
-                if not isinstance(item, dict):
-                    continue
-                item_key = self._record_key(item)
-                use_key = item_key or str(key).strip()
-                if not use_key:
-                    continue
-                normalized[use_key] = item
-            self.data = normalized
-            return
-
-        self.data = {}
+        self._read_file_into(self.store_file_path, self.data)
 
     def save(self) -> None:
-        """Write self.data to store_file_path; create parent directories if needed."""
         path = self.store_file_path
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = self._serialize_value(self.data)
@@ -86,4 +94,4 @@ class LLMModelStore:
         )
 
 
-__all__ = ["LLMModelStore"]
+__all__ = ["LLM_MODEL_STORE", "bind_llm_model_store", "reset_llm_model_store"]

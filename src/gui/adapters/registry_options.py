@@ -48,21 +48,17 @@ def get_vision_models_for_provider(provider: str) -> list[str]:
 
 def get_chat_provider_options() -> list[str]:
     """Providers with enabled models suitable for chat (text in / text out)."""
+    from src.core import AppConfigStore
     from src.modules.llm_models_registry import LLMModelManager
 
     manager = LLMModelManager()
+    config = AppConfigStore.get()
     providers: set[str] = set()
-    for r in manager.get_sorted_records():
-        if not r.get("enabled", True):
-            continue
+    for r in manager.get_available_models():
         pc = (r.get("provider") or r.get("provider_code") or "").strip()
         if pc:
             providers.add(pc)
-    from src.core import AppConfigStore
-
-    config = AppConfigStore.get()
-    lp = config.llm_providers
-    result = [p for p in sorted(providers) if lp.is_provider_available(p)]
+    result = sorted(providers)
     if config.core.debug:
         result = ["mock", *[p for p in result if p != "mock"]]
     return result
@@ -74,9 +70,7 @@ def get_chat_models_for_provider(provider: str) -> list[str]:
 
     manager = LLMModelManager()
     result = []
-    for r in manager.get_sorted_records():
-        if not r.get("enabled", True):
-            continue
+    for r in manager.get_available_models():
         pc = (r.get("provider") or r.get("provider_code") or "").strip()
         if pc != provider:
             continue

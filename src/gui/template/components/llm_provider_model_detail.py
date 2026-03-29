@@ -21,6 +21,19 @@ from src.gui.template.styles import SPACING
 
 from .scrollable_frame import ScrollableFrame
 
+# Read-only info row: long registry strings otherwise stretch the form horizontally.
+_CODE_DISPLAY_MAX_LEN = 72
+_PROVIDER_DISPLAY_MAX_LEN = 36
+
+
+def _ellipsis_max(s: str, max_len: int) -> str:
+    t = (s or "").strip()
+    if len(t) <= max_len:
+        return t
+    if max_len <= 1:
+        return "…"
+    return t[: max_len - 1] + "…"
+
 
 class LLMProviderModelDetail(ttk.Frame):
     """Right pane: view and edit the selected model."""
@@ -99,8 +112,8 @@ class LLMProviderModelDetail(ttk.Frame):
             self._created_var.set(ns)
             self._enabled_var.set(off)
         else:
-            self._provider_var.set(self._model.provider_code)
-            self._code_var.set(self._model.code)
+            self._provider_var.set(_ellipsis_max(self._model.provider_code, _PROVIDER_DISPLAY_MAX_LEN))
+            self._code_var.set(_ellipsis_max(self._model.code, _CODE_DISPLAY_MAX_LEN))
             self._created_var.set(self._format_created(self._model.created))
             self._enabled_var.set(on if self._model.enabled else off)
 
@@ -191,7 +204,15 @@ class LLMProviderModelDetail(ttk.Frame):
             ),
         )
 
-    def _add_info_row(self, parent: ttk.Frame, row: int, label_key: str, value_var: tk.StringVar) -> None:
+    def _add_info_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label_key: str,
+        value_var: tk.StringVar,
+        *,
+        value_wraplength: int | None = None,
+    ) -> None:
         lbl = ttk.Label(parent, text="", anchor=tk.W)
         self._register_label_colon(lbl, label_key)
         lbl.grid(
@@ -202,10 +223,13 @@ class LLMProviderModelDetail(ttk.Frame):
             pady=SPACING["xs"],
             ipadx=0,
         )
-        ttk.Label(parent, textvariable=value_var, anchor=tk.W).grid(
+        val_lbl = ttk.Label(parent, textvariable=value_var, anchor=tk.W, justify=tk.LEFT)
+        if value_wraplength is not None:
+            val_lbl.configure(wraplength=value_wraplength)
+        val_lbl.grid(
             row=row,
             column=1,
-            sticky=tk.W,
+            sticky=tk.NW,
             pady=SPACING["xs"],
         )
 
@@ -215,8 +239,13 @@ class LLMProviderModelDetail(ttk.Frame):
         h = gui_element_header_3(title_wrap, "")
         title_wrap.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, SPACING["xs"]))
         self._register_header(h, "models.detail.section.model_info")
-        self._add_info_row(parent, 1, "models.detail.field.provider", self._provider_var)
-        self._add_info_row(parent, 2, "models.detail.field.model_code", self._code_var)
+        _iw = 520
+        self._add_info_row(
+            parent, 1, "models.detail.field.provider", self._provider_var, value_wraplength=_iw
+        )
+        self._add_info_row(
+            parent, 2, "models.detail.field.model_code", self._code_var, value_wraplength=_iw
+        )
         self._add_info_row(parent, 3, "models.detail.field.created", self._created_var)
         en_lbl = ttk.Label(parent, text="", anchor=tk.W)
         self._register_label_colon(en_lbl, "models.detail.enabled")
@@ -315,8 +344,8 @@ class LLMProviderModelDetail(ttk.Frame):
             self._empty_state.pack(fill=tk.X, pady=(0, SPACING["sm"]))
             return
 
-        self._provider_var.set(model.provider_code)
-        self._code_var.set(model.code)
+        self._provider_var.set(_ellipsis_max(model.provider_code, _PROVIDER_DISPLAY_MAX_LEN))
+        self._code_var.set(_ellipsis_max(model.code, _CODE_DISPLAY_MAX_LEN))
         self._created_var.set(self._format_created(model.created))
         self._enabled_var.set(
             locmsg("gui.enabled") if model.enabled else locmsg("gui.disabled")

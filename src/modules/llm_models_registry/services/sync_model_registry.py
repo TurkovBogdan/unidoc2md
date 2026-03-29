@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.modules.llm_providers import LLMProvider, LLMModelsRequest
+from ...llm_providers import LLMProvider, LLMModelsRequest
 
 from .llm_model_manager import LLMModelManager
 

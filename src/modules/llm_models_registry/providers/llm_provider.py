@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.modules.llm_providers import LLMProvider, LLMProviderDisabledError
-from src.modules.llm_providers.schemas.models import LLMModelsRequest
+from ...llm_providers import LLMProvider, LLMProviderDisabledError, LLMModelsRequest
 
 from ..models.llm_model import LLMModel
 
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
 
 class LLMProvider:
     """
-    Thin wrapper over ``src.modules.llm_providers.LLMProvider`` for listing models.
+    Thin wrapper over ``llm_providers.LLMProvider`` for listing models.
     Converts ``LLMModelInfo`` into ``LLMModel`` with default capabilities.
     """
 

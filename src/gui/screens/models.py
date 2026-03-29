@@ -125,7 +125,7 @@ class ModelSettingsScreen(BaseGUIScreen):
             pass
 
     def _reload_models(self, *, preferred_key: str | None = None) -> None:
-        models = self._manager.list_models()
+        models = self._manager.list_models_for_settings_list()
         if self._model_list is not None:
             self._model_list.set_models(models, preferred_key=preferred_key or self._selected_model_key)
 

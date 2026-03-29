@@ -30,6 +30,7 @@ from src.gui.template.elements.classes.gui_input_select import GuiInputSelect
 from src.gui.screens.base_screen import BaseGUIScreen
 from src.gui.template.styles import (
     FONT_FAMILY_UI,
+    GAP_PX,
     GUI_CONTENT_WRAPPER,
     GUI_TOPBAR,
     PALETTE,
@@ -142,6 +143,7 @@ class SettingsScreen(BaseGUIScreen):
         self._llm_sidebar_refs: dict[str, tk.Misc] = {}
         self._ocr_sidebar_refs: dict[str, tk.Misc] = {}
         self._ocr_provider_select: GuiInputSelect | None = None
+        self._lmstudio_ssl_select: GuiInputSelect | None = None
         self._llm_form_locale_refs: dict[str, tk.Misc] = {}
         self._llm_api_key_labels: list[tk.Misc] = []
         self._ocr_form_locale_refs: dict[str, tk.Misc] = {}
@@ -414,12 +416,126 @@ class SettingsScreen(BaseGUIScreen):
             )
             sub.finish_field_row(key_row, lw, entry)
 
+    def _add_lmstudio_provider_block(
+        self,
+        block: SettingsBlock,
+        *,
+        add_separator_before: bool,
+    ) -> None:
+        """LM Studio: host, port, optional token (OpenAI-compatible local server)."""
+        provider_id = "lmstudio"
+        cfg = UI_SETTINGS_BLOCK
+        if add_separator_before:
+            block.add_full_width_row(gui_element_separator(block.form))
+
+        prov_off, prov_on = _provider_toggle_values()
+        enabled_var = tk.StringVar(value=prov_off)
+        self._vars[f"llm_providers.{provider_id}_provider_enabled"] = enabled_var
+
+        status_row = block.add_field_row_frame()
+        prov_sel = gui_element_input_select(
+            status_row,
+            variable=enabled_var,
+            values=(prov_off, prov_on),
+            width=20,
+        )
+        self._llm_provider_selects[provider_id] = prov_sel
+        block.finish_field_row(
+            status_row,
+            gui_element_input_label(
+                status_row, "LM Studio", wraplength=cfg["column_label_px"]
+            ),
+            prov_sel,
+        )
+
+        sub, sub_frame, _row = block.begin_sub_block(
+            row_builder_cfg={"row_pady_bottom": GAP_PX},
+        )
+        self._provider_key_frames[provider_id] = sub_frame
+        enabled_var.trace_add(
+            "write",
+            lambda *_p, pid=provider_id: self._on_llm_provider_enabled_change(pid),
+        )
+
+        wrap_px = cfg["container_width_px"]
+        host_row = sub.add_field_row_frame()
+        host_var = tk.StringVar()
+        self._vars["llm_providers.lmstudio_host"] = host_var
+        hl = gui_element_input_label(
+            host_row,
+            locmsg("settings.llm.label.lmstudio_host"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._llm_form_locale_refs["label_lmstudio_host"] = hl
+        sub.finish_field_row(
+            host_row,
+            hl,
+            gui_element_input_text(host_row, textvariable=host_var, width=28),
+        )
+
+        port_row = sub.add_field_row_frame()
+        port_var = tk.StringVar()
+        self._vars["llm_providers.lmstudio_port"] = port_var
+        pl = gui_element_input_label(
+            port_row,
+            locmsg("settings.llm.label.lmstudio_port"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._llm_form_locale_refs["label_lmstudio_port"] = pl
+        sub.finish_field_row(
+            port_row,
+            pl,
+            gui_element_input_text(port_row, textvariable=port_var, width=10),
+        )
+
+        ssl_row = sub.add_field_row_frame()
+        ssl_off, ssl_on = _application_debug_select_values()
+        ssl_var = tk.StringVar(value=ssl_off)
+        self._vars["llm_providers.lmstudio_ssl"] = ssl_var
+        sl = gui_element_input_label(
+            ssl_row,
+            locmsg("settings.llm.label.lmstudio_ssl"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._llm_form_locale_refs["label_lmstudio_ssl"] = sl
+        ssl_sel = gui_element_input_select(
+            ssl_row,
+            variable=ssl_var,
+            values=(ssl_off, ssl_on),
+            width=20,
+        )
+        self._lmstudio_ssl_select = ssl_sel
+        sub.finish_field_row(ssl_row, sl, ssl_sel)
+
+        token_row = sub.add_field_row_frame()
+        token_var = tk.StringVar()
+        self._vars["llm_providers.lmstudio_api_key"] = token_var
+        tl = gui_element_input_label(
+            token_row,
+            locmsg("settings.llm.label.lmstudio_api_key"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._llm_form_locale_refs["label_lmstudio_api_key"] = tl
+        sub.finish_field_row(
+            token_row,
+            tl,
+            gui_element_input_text(token_row, textvariable=token_var, width=28),
+        )
+        token_desc = gui_element_input_description(
+            sub_frame,
+            locmsg("settings.llm.desc.lmstudio_api_key"),
+            wraplength=wrap_px,
+        )
+        sub.add_comment(token_desc)
+        self._llm_form_locale_refs["desc_lmstudio_api_key"] = token_desc
+
     def _build_llm_providers_tab(self, parent: ttk.Frame) -> None:
         self._llm_providers_frame = ttk.Frame(parent)
         self._llm_sidebar_refs = {}
         self._llm_form_locale_refs.clear()
         self._llm_provider_selects.clear()
         self._llm_api_key_labels.clear()
+        self._lmstudio_ssl_select = None
         form_parent = self._build_settings_tab_shell(
             self._llm_providers_frame,
             sidebar_title=locmsg("gui.notes"),
@@ -464,6 +580,7 @@ class SettingsScreen(BaseGUIScreen):
             self._add_llm_provider_block(
                 block, pid, title, keys, add_separator_before=idx > 0
             )
+        self._add_lmstudio_provider_block(block, add_separator_before=True)
 
     def _build_ocr_providers_tab(self, parent: ttk.Frame) -> None:
         self._ocr_providers_frame = ttk.Frame(parent)
@@ -551,6 +668,9 @@ class SettingsScreen(BaseGUIScreen):
                     var.set(prov_on if lp.get(field, False) else prov_off)
                 elif field == "gateway_timeout":
                     var.set(str(lp.get(field, 30)))
+                elif field == "lmstudio_ssl":
+                    off, on = _application_debug_select_values()
+                    var.set(on if lp.get("lmstudio_ssl", False) else off)
                 else:
                     var.set(lp.get(field, ""))
             elif key.startswith("yandex_ocr."):
@@ -572,6 +692,7 @@ class SettingsScreen(BaseGUIScreen):
                     var.set(_language_select_row_label(_settings_default_language_code()))
         for provider_id, _, _ in LLM_PROVIDER_SECTIONS:
             self._on_llm_provider_enabled_change(provider_id)
+        self._on_llm_provider_enabled_change("lmstudio")
         self._on_yandex_ocr_enabled_change()
 
     def _get_form_data(self) -> dict:
@@ -588,6 +709,9 @@ class SettingsScreen(BaseGUIScreen):
                     except (TypeError, ValueError):
                         val = 30
                     lp[field] = max(GATEWAY_TIMEOUT_MIN, min(GATEWAY_TIMEOUT_MAX, val))
+                elif field == "lmstudio_ssl":
+                    _off, on = _application_debug_select_values()
+                    lp[field] = var.get() == on
                 else:
                     lp[field] = var.get()
             elif key.startswith("yandex_ocr."):
@@ -686,6 +810,26 @@ class SettingsScreen(BaseGUIScreen):
         for lw in self._llm_api_key_labels:
             if lw is not None and lw.winfo_exists():
                 lw.configure(text=api_lbl)
+
+        for ref_key, msg_key in (
+            ("label_lmstudio_host", "settings.llm.label.lmstudio_host"),
+            ("label_lmstudio_port", "settings.llm.label.lmstudio_port"),
+            ("label_lmstudio_ssl", "settings.llm.label.lmstudio_ssl"),
+            ("label_lmstudio_api_key", "settings.llm.label.lmstudio_api_key"),
+        ):
+            w = self._llm_form_locale_refs.get(ref_key)
+            if w is not None and w.winfo_exists():
+                w.configure(text=locmsg(msg_key))
+        td = self._llm_form_locale_refs.get("desc_lmstudio_api_key")
+        if td is not None and td.winfo_exists():
+            td.configure(text=locmsg("settings.llm.desc.lmstudio_api_key"))
+
+        if self._lmstudio_ssl_select is not None:
+            d_off, d_on = _application_debug_select_values()
+            self._lmstudio_ssl_select.set_values((d_off, d_on))
+            ssl_var = self._vars.get("llm_providers.lmstudio_ssl")
+            if isinstance(ssl_var, tk.StringVar):
+                ssl_var.set(d_on if lp.get("lmstudio_ssl", False) else d_off)
 
         yl = self._ocr_form_locale_refs.get("label_yandex_row")
         if yl is not None and yl.winfo_exists():

@@ -152,7 +152,7 @@ def test_get_available_values_vision_only_input_image_models(
 
     # Registry: openai — one model with input_image; anthropic — only without input_image; xai — empty
     mock_manager = mock_manager_class.return_value
-    mock_manager.get_sorted_records.return_value = [
+    mock_manager.get_available_models.return_value = [
         {"provider": "openai", "name": "gpt-4o", "enabled": True, "input_image": True},
         {"provider": "openai", "name": "gpt-3.5", "enabled": True, "input_image": False},
         {"provider": "anthropic", "name": "claude-3", "enabled": True, "input_image": False},

@@ -18,6 +18,8 @@ def _minimal_ini_llm_providers() -> str:
         "GOOGLE_PROVIDER_ENABLED = false\nGOOGLE_API_KEY =\n"
         "OPENAI_PROVIDER_ENABLED = false\nOPENAI_API_KEY =\n"
         "XAI_PROVIDER_ENABLED = false\nXAI_API_KEY =\n"
+        "LMSTUDIO_PROVIDER_ENABLED = false\nLMSTUDIO_HOST =\n"
+        "LMSTUDIO_PORT =\nLMSTUDIO_SSL = false\nLMSTUDIO_API_KEY =\n"
     )
 
 

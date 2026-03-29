@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .boot import LLMModelStoreMerger
 from .module import ModuleConfig, ModuleConfigStore
+from .providers.llm_model_store import bind_llm_model_store, reset_llm_model_store
 
 
 def module_llm_model_registry_boot(
@@ -26,7 +27,9 @@ def module_llm_model_registry_boot(
     user_file.parent.mkdir(parents=True, exist_ok=True)
     config = ModuleConfig(models_store_file=user_file)
     ModuleConfigStore.set(config)
+    reset_llm_model_store()
     LLMModelStoreMerger.apply_boot_merge(source_file, user_file)
+    bind_llm_model_store()
 
 
 __all__ = ["module_llm_model_registry_boot"]

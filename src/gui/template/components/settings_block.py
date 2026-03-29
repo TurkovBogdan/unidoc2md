@@ -120,7 +120,11 @@ class SettingsBlock(_RowBuilder):
         self._row += 1
         return r
 
-    def begin_sub_block(self) -> tuple[_RowBuilder, ttk.Frame, int]:
+    def begin_sub_block(
+        self,
+        *,
+        row_builder_cfg: dict | None = None,
+    ) -> tuple[_RowBuilder, ttk.Frame, int]:
         """Nested block; returns (builder, frame, row index for show/hide)."""
         c = self._cfg
         frame = ttk.Frame(self._form)
@@ -128,7 +132,8 @@ class SettingsBlock(_RowBuilder):
         frame.columnconfigure(0, weight=1)
         r = self._row
         self._row += 1
-        return _RowBuilder(frame, c), frame, r
+        inner_cfg = {**c, **(row_builder_cfg or {})}
+        return _RowBuilder(frame, inner_cfg), frame, r
 
 
 def grid_section_banner(widget: tk.Widget, row: int) -> None:

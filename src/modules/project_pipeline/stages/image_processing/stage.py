@@ -323,7 +323,7 @@ class ImageProcessingStage(BasePipelineStage):
         try:
             from src.modules.llm_models_registry import LLMModelManager
 
-            rec = LLMModelManager().get_record(f"{provider}@{model}")
+            rec = LLMModelManager().get_model(f"{provider}@{model}")
         except RuntimeError:
             return None, None
         if rec is None:

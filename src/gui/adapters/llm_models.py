@@ -76,35 +76,26 @@ class LLMProviderModelRecord:
         )
 
 
-def _is_provider_enabled(provider_code: str) -> bool:
-    from src.core import AppConfigStore
-
-    return AppConfigStore.get().llm_providers.is_provider_enabled(provider_code)
-
-
 class LLMModelsAdapter:
-    """GUI bridge between screens and the domain model registry manager."""
+    """
+    GUI bridge to the registry manager.
+    List vs load-by-key use different rules — call the method that matches the screen.
+    """
 
     def __init__(self, app_root: Path | None = None) -> None:
         self._app_root = app_root
         self._manager = LLMModelManager()
 
-    def list_models(self) -> list[LLMProviderModelRecord]:
-        """Models for the GUI, filtered to enabled providers."""
-        records = self._manager.get_sorted_records()
-        result: list[LLMProviderModelRecord] = []
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            provider_code = (record.get("provider") or record.get("provider_code") or "").strip()
-            if not provider_code or not _is_provider_enabled(provider_code):
-                continue
-            result.append(LLMProviderModelRecord.from_record(record))
-        return result
+    def list_models_for_settings_list(self) -> list[LLMProviderModelRecord]:
+        """Rows for the model list screen: providers enabled in app config; all their registry rows."""
+        return [
+            LLMProviderModelRecord.from_record(record)
+            for record in self._manager.get_models_for_available_providers()
+        ]
 
     def get_model(self, model_key: str) -> LLMProviderModelRecord | None:
-        """One registry record by ``provider@name`` key."""
-        record = self._manager.get_record(model_key)
+        """Registry row by ``provider@name`` (no provider filter; detail screen / title)."""
+        record = self._manager.get_model(model_key)
         if record is None:
             return None
         return LLMProviderModelRecord.from_record(record)

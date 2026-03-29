@@ -135,7 +135,6 @@ class ImageProcessingConfig:
     def get_available_values() -> "ImageProcessingConfig.AvailableValues":
         """Доступные значения по app.ini для валидации и построения UI (processing_logic, ocr/vision)."""
         config = AppConfigStore.get()
-        lp = config.llm_providers
         yo = config.yandex_ocr
 
         ocr_available = ImageProcessingConfig.is_ocr_available(yo)
@@ -152,13 +151,6 @@ class ImageProcessingConfig:
 
         from src.modules.llm_models_registry import LLMModelManager
 
-        providers_with_keys: list[str] = []
-        for code in ("anthropic", "google", "openai", "xai"):
-            if lp.is_provider_available(code):
-                providers_with_keys.append(code)
-        if config.core.debug:
-            providers_with_keys = ["mock", *providers_with_keys]
-
         vision_providers_list: list[str] = []
         vision_models_dict: dict[str, list[str]] = {}
         try:
@@ -166,17 +158,17 @@ class ImageProcessingConfig:
         except RuntimeError:
             llm_registry_manager = None
         if llm_registry_manager is not None:
-            for provider_code in providers_with_keys:
-                records = [
-                    r
-                    for r in llm_registry_manager.get_sorted_records()
-                    if (r.get("provider") or r.get("provider_code") or "").strip()
-                    == provider_code
-                    and r.get("enabled", True)
-                    and r.get("input_image", False)
-                ]
-                model_codes = [str(r.get("name") or r.get("code") or "").strip() for r in records]
-                model_codes = [c for c in model_codes if c]
+            by_provider: dict[str, list[str]] = {}
+            for r in llm_registry_manager.get_available_models():
+                if not r.get("input_image", False):
+                    continue
+                pc = (r.get("provider") or r.get("provider_code") or "").strip()
+                name = str(r.get("name") or r.get("code") or "").strip()
+                if not pc or not name:
+                    continue
+                by_provider.setdefault(pc, []).append(name)
+            for provider_code in sorted(by_provider.keys()):
+                model_codes = by_provider[provider_code]
                 if model_codes:
                     vision_providers_list.append(provider_code)
                     vision_models_dict[provider_code] = model_codes

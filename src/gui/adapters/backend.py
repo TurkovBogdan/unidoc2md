@@ -103,6 +103,11 @@ def load_app_config_dict() -> dict[str, Any]:
             "openai_api_key": lp.openai_api_key or "",
             "xai_provider_enabled": lp.xai_provider_enabled,
             "xai_api_key": lp.xai_api_key or "",
+            "lmstudio_provider_enabled": lp.lmstudio_provider_enabled,
+            "lmstudio_host": lp.lmstudio_host or "",
+            "lmstudio_port": lp.lmstudio_port or "",
+            "lmstudio_ssl": lp.lmstudio_ssl,
+            "lmstudio_api_key": lp.lmstudio_api_key or "",
         },
         "yandex_ocr": {
             "provider_enabled": yo.provider_enabled,
@@ -151,6 +156,11 @@ def save_app_config_dict(data: dict[str, Any], *, app_root: Path | None = None) 
             openai_api_key=str(lp.get("openai_api_key", "")),
             xai_provider_enabled=bool(lp.get("xai_provider_enabled", False)),
             xai_api_key=str(lp.get("xai_api_key", "")),
+            lmstudio_provider_enabled=bool(lp.get("lmstudio_provider_enabled", False)),
+            lmstudio_host=str(lp.get("lmstudio_host", "")).strip(),
+            lmstudio_port=str(lp.get("lmstudio_port", "")).strip(),
+            lmstudio_ssl=bool(lp.get("lmstudio_ssl", False)),
+            lmstudio_api_key=str(lp.get("lmstudio_api_key", "")),
         ),
         yandex_ocr=YandexOCRConfig(
             provider_enabled=bool(yo.get("provider_enabled", False)),
