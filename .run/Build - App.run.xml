@@ -1,0 +1,22 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Build - App" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="uv run pyinstaller --clean --distpath dist/release --workpath dist/build urb-app.spec" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="uv" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="powershell.exe" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <option name="EXECUTE_SCRIPT_FILE" value="false" />
+    <envs />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Build - Locale" run_configuration_type="UvRunConfigurationType" />
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Sync - Dev" run_configuration_type="ShConfigurationType" />
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Test - Full" run_configuration_type="tests" />
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Sync - Build" run_configuration_type="ShConfigurationType" />
+    </method>
+  </configuration>
+</component>

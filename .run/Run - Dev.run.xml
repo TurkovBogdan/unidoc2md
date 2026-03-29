@@ -1,0 +1,23 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run - Dev" type="UvRunConfigurationType" factoryName="UvRunConfigurationType">
+    <option name="args">
+      <list>
+        <option value="--debug" />
+      </list>
+    </option>
+    <option name="checkSync" value="false" />
+    <option name="env">
+      <map />
+    </option>
+    <option name="runType" value="SCRIPT" />
+    <option name="scriptOrModule" value="E:\Projects\ProjectPython\unidoc2md\main.py" />
+    <option name="uvArgs">
+      <list />
+    </option>
+    <option name="uvSdkKey" value="uv (unidoc2md)" />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Build - Locale" run_configuration_type="UvRunConfigurationType" />
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Sync - Dev" run_configuration_type="ShConfigurationType" />
+    </method>
+  </configuration>
+</component>
