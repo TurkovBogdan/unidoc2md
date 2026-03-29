@@ -1,1 +1,147 @@
-"""Переиспользуемая область с вертикальным скроллом (тонкий скроллбар, показ только при переполнении)."""from __future__ import annotationsimport tkinter as tkfrom tkinter import ttkfrom src.gui.template.styles import PALETTEfrom .custom_scrollbar import CustomScrollbarclass ScrollableFrame(ttk.Frame):    """Контейнер: canvas + внутренний фрейм для контента + вертикальный скроллбар.    Скроллбар показывается только когда высота контента превышает видимую высоту.    Поддерживает прокрутку колёсиком мыши при наведении на область.    Скроллбар рисуется вручную на Canvas, чтобы Windows не подменял цвета системной темой.    """    def __init__(self, parent: tk.Misc, **kwargs) -> None:        super().__init__(parent, **kwargs)        self._canvas: tk.Canvas | None = None        self._inner: ttk.Frame | None = None        self._scrollbar: CustomScrollbar | None = None        self._scrollbar_visible = False        self._wheel_bind_count = 0        self._build()    def _build(self) -> None:        p = PALETTE        self._canvas = tk.Canvas(            self,            bg=p["bg_surface"],            highlightthickness=0,            bd=0,            relief=tk.FLAT,        )        self._scrollbar = CustomScrollbar(self, command=self._canvas.yview)        self._canvas.configure(yscrollcommand=self._on_canvas_scroll)        self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        self._inner = ttk.Frame(self._canvas)        self._window_id = self._canvas.create_window((0, 0), window=self._inner, anchor=tk.NW)        self._inner.bind("<Configure>", self._on_inner_configure)        self._canvas.bind("<Configure>", self._on_canvas_configure)        self._canvas.bind("<Enter>", self._on_enter_scroll_area)        self._canvas.bind("<Leave>", self._on_leave_scroll_area)        self._inner.bind("<Enter>", self._on_enter_scroll_area)        self._inner.bind("<Leave>", self._on_leave_scroll_area)        self.winfo_toplevel().bind_all("<FocusIn>", self._on_focus_in, add="+")    @property    def content_frame(self) -> ttk.Frame:        """Фрейм, в который нужно размещать контент (pack/grid)."""        assert self._inner is not None        return self._inner    def refresh_scroll_region(self) -> None:        """Пересчитать область прокрутки (вызывать после grid/grid_remove дочерних виджетов)."""        if not self._canvas or not self._inner:            return        self._inner.update_idletasks()        self._canvas.update_idletasks()        self._canvas.configure(scrollregion=self._canvas.bbox("all"))        self.after_idle(self._update_scrollbar_visibility)    def _on_inner_configure(self, event: tk.Event) -> None:        if not self._canvas:            return        self._canvas.configure(scrollregion=self._canvas.bbox("all"))        self.after_idle(self._update_scrollbar_visibility)    def _on_canvas_configure(self, event: tk.Event) -> None:        if not self._canvas or not self._inner:            return        self._canvas.itemconfigure(self._window_id, width=event.width)        self.after_idle(self._update_scrollbar_visibility)    def _need_scroll(self) -> bool:        """True, если высота контента больше видимой области и нужен скролл."""        if not self._canvas:            return False        bbox = self._canvas.bbox("all")        if not bbox:            return False        _, _, _, content_bottom = bbox        canvas_height = self._canvas.winfo_height()        return content_bottom > canvas_height    def _on_mousewheel(self, event: tk.Event) -> None:        if not self._canvas or not self._need_scroll():            return        delta = getattr(event, "delta", 0)        if delta == 0:            return        units = -1 if delta > 0 else 1        self._canvas.yview_scroll(units, "units")    def _on_enter_scroll_area(self, event: tk.Event) -> None:        self._wheel_bind_count += 1        if self._wheel_bind_count == 1:            self.bind_all("<MouseWheel>", self._on_mousewheel)    def _on_leave_scroll_area(self, event: tk.Event) -> None:        self._wheel_bind_count -= 1        if self._wheel_bind_count <= 0:            self._wheel_bind_count = 0            self.unbind_all("<MouseWheel>")    def _on_focus_in(self, event: tk.Event) -> None:        """Когда фокус возвращается в виджет внутри области (например после закрытия попапа) — снова вешаем скролл колёсиком."""        if self._wheel_bind_count != 0:            return        w = event.widget        while w:            if w == self or w == self._canvas or w == self._inner:                self._wheel_bind_count = 1                self.bind_all("<MouseWheel>", self._on_mousewheel)                return            w = getattr(w, "master", None)    def _update_scrollbar_visibility(self) -> None:        if not self._canvas or not self._scrollbar:            return        if not self._need_scroll() and self._scrollbar_visible:            self._hide_scrollbar()            return        if self._need_scroll() and not self._scrollbar_visible:            self._show_scrollbar()    def _on_canvas_scroll(self, first: str, last: str) -> None:        if self._scrollbar:            self._scrollbar.set(first, last)    def _show_scrollbar(self) -> None:        if self._scrollbar and not self._scrollbar_visible:            self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)            self._scrollbar_visible = True    def _hide_scrollbar(self) -> None:        if self._scrollbar and self._scrollbar_visible:            self._scrollbar.pack_forget()            self._scrollbar_visible = False
+"""Vertically scrollable region (thin scrollbar, shown only when content overflows)."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from src.gui.template.styles import PALETTE
+
+from .custom_scrollbar import CustomScrollbar
+
+
+class ScrollableFrame(ttk.Frame):
+    """Canvas + inner content frame + vertical scrollbar.
+
+    Scrollbar appears only when content is taller than the viewport.
+    Mouse wheel scrolls while the pointer is over the area.
+    Scrollbar is drawn on Canvas so Windows does not override colors with the system theme.
+    """
+
+    def __init__(self, parent: tk.Misc, **kwargs) -> None:
+        super().__init__(parent, **kwargs)
+        self._canvas: tk.Canvas | None = None
+        self._inner: ttk.Frame | None = None
+        self._scrollbar: CustomScrollbar | None = None
+        self._scrollbar_visible = False
+        self._wheel_bind_count = 0
+        self._build()
+
+    def _build(self) -> None:
+        p = PALETTE
+        self._canvas = tk.Canvas(
+            self,
+            bg=p["bg_surface"],
+            highlightthickness=0,
+            bd=0,
+            relief=tk.FLAT,
+        )
+        self._scrollbar = CustomScrollbar(self, command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._on_canvas_scroll)
+
+        self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._inner = ttk.Frame(self._canvas)
+        self._window_id = self._canvas.create_window((0, 0), window=self._inner, anchor=tk.NW)
+
+        self._inner.bind("<Configure>", self._on_inner_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self._canvas.bind("<Enter>", self._on_enter_scroll_area)
+        self._canvas.bind("<Leave>", self._on_leave_scroll_area)
+        self._inner.bind("<Enter>", self._on_enter_scroll_area)
+        self._inner.bind("<Leave>", self._on_leave_scroll_area)
+        self.winfo_toplevel().bind_all("<FocusIn>", self._on_focus_in, add="+")
+
+    @property
+    def content_frame(self) -> ttk.Frame:
+        """Frame to place child content (pack/grid)."""
+        assert self._inner is not None
+        return self._inner
+
+    def refresh_scroll_region(self) -> None:
+        """Recompute scrollregion (call after grid/grid_remove on children)."""
+        if not self._canvas or not self._inner:
+            return
+        self._inner.update_idletasks()
+        self._canvas.update_idletasks()
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        self.after_idle(self._update_scrollbar_visibility)
+
+    def _on_inner_configure(self, event: tk.Event) -> None:
+        if not self._canvas:
+            return
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        self.after_idle(self._update_scrollbar_visibility)
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        if not self._canvas or not self._inner:
+            return
+        self._canvas.itemconfigure(self._window_id, width=event.width)
+        self.after_idle(self._update_scrollbar_visibility)
+
+    def _need_scroll(self) -> bool:
+        """True when content is taller than the canvas and scrolling is needed."""
+        if not self._canvas:
+            return False
+        bbox = self._canvas.bbox("all")
+        if not bbox:
+            return False
+        _, _, _, content_bottom = bbox
+        canvas_height = self._canvas.winfo_height()
+        return content_bottom > canvas_height
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if not self._canvas or not self._need_scroll():
+            return
+        delta = getattr(event, "delta", 0)
+        if delta == 0:
+            return
+        units = -1 if delta > 0 else 1
+        self._canvas.yview_scroll(units, "units")
+
+    def _on_enter_scroll_area(self, event: tk.Event) -> None:
+        self._wheel_bind_count += 1
+        if self._wheel_bind_count == 1:
+            self.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _on_leave_scroll_area(self, event: tk.Event) -> None:
+        self._wheel_bind_count -= 1
+        if self._wheel_bind_count <= 0:
+            self._wheel_bind_count = 0
+            self.unbind_all("<MouseWheel>")
+
+    def _on_focus_in(self, event: tk.Event) -> None:
+        """Re-bind mouse wheel when focus returns inside the area (e.g. after closing a popup)."""
+        if self._wheel_bind_count != 0:
+            return
+        w = event.widget
+        while w:
+            if w == self or w == self._canvas or w == self._inner:
+                self._wheel_bind_count = 1
+                self.bind_all("<MouseWheel>", self._on_mousewheel)
+                return
+            w = getattr(w, "master", None)
+
+    def _update_scrollbar_visibility(self) -> None:
+        if not self._canvas or not self._scrollbar:
+            return
+        if not self._need_scroll() and self._scrollbar_visible:
+            self._hide_scrollbar()
+            return
+        if self._need_scroll() and not self._scrollbar_visible:
+            self._show_scrollbar()
+
+    def _on_canvas_scroll(self, first: str, last: str) -> None:
+        if self._scrollbar:
+            self._scrollbar.set(first, last)
+
+    def _show_scrollbar(self) -> None:
+        if self._scrollbar and not self._scrollbar_visible:
+            self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self._scrollbar_visible = True
+
+    def _hide_scrollbar(self) -> None:
+        if self._scrollbar and self._scrollbar_visible:
+            self._scrollbar.pack_forget()
+            self._scrollbar_visible = False

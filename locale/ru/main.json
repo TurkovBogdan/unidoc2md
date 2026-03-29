@@ -1,4 +1,8 @@
 {
   "app.title": "unidoc2md",
-  "error.project_not_found": "Проект не найден"
+  "error.project_not_found": "Проект не найден",
+  "error.project_name_empty": "Имя проекта не может быть пустым.",
+  "error.project_already_exists": "Проект с таким именем уже существует.",
+  "error.project_delete_path_outside": "Удаление разрешено только для путей внутри папки проектов.",
+  "error.project_folder_not_found": "Папка проекта не найдена."
 }

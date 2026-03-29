@@ -1,4 +1,5 @@
 {
+  "gui.window_title": "unidoc2md — Конфигуратор проектов",
   "gui.save": "Сохранить",
   "gui.back": "Назад",
   "gui.edit": "Редактировать",
@@ -24,5 +25,8 @@
   "gui.project.stop": "Остановить",
   "gui.project.stop_pending": "Остановка...",
   "gui.project.open_documents": "Открыть документы",
-  "gui.project.open_results": "Открыть результаты"
+  "gui.project.open_results": "Открыть результаты",
+  "gui.modal.errors_heading": "Ошибки:",
+  "gui.modal.confirm_title": "Подтверждение",
+  "gui.error.open_project_title": "Ошибка открытия проекта"
 }

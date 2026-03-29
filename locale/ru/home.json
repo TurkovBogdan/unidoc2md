@@ -1,4 +1,6 @@
 {
+  "home.window_title": "unidoc2md | Проекты",
+  "home.empty_list": "Проектов пока нет.",
   "home.title": "Проекты",
   "home.files.one": "1 файл",
   "home.files.zero": "0 файлов",
@@ -6,5 +8,10 @@
   "home.delete.title": "Удаление проекта",
   "home.delete.message": "Удалить проект '{project_id}'? Будет удалена вся папка проекта вместе с файлами.",
   "home.new_project.title": "Новый проект",
-  "home.new_project.prompt": "Имя проекта (папка в projects/):"
+  "home.new_project.prompt": "Имя проекта (папка в projects/):",
+  "home.error.title": "Ошибка",
+  "home.create.duplicate": "Проект с именем «{name}» уже существует.",
+  "home.delete.status_title": "Удаление",
+  "home.delete.already_removed": "Проект уже удалён.",
+  "home.delete.failed": "Не удалось удалить проект: {detail}"
 }

@@ -1,1 +1,63 @@
-"""Точка входа приложения: инициализация (CoreBootstrap) и CLI/GUI."""from __future__ import annotationsimport sysfrom pathlib import Pathfrom src.core import AppConfigStorefrom src.core.app_path import resolve_packaged_assets_data_pathfrom src.core.bootstrap import CoreBootstrapfrom src.core.logger import SYSTEM_LOGGER, get_system_loggerfrom src.modules.llm_models_registry.bootstrap import module_llm_model_registry_bootfrom src.modules.llm_providers.bootstrap import module_llm_providers_bootfrom src.modules.yandex_ocr.bootstrap import module_yandex_ocr_boot# Core: runtime dirs, app.ini, system logger (config loaded into AppConfigStore).app_paths = CoreBootstrap.core_boot(None)app_config = AppConfigStore.get()# Core: locale catalog, sync to runtime assets, apply [CORE] LANGUAGE from store.CoreBootstrap.lang_boot(    app_paths,    {        "ru": "Русский",        "en": "English",        "zh": "中文",    },)response_logger = get_system_logger() if app_config.core.debug else None# llm_models_registry: merge bundled model registry (PyInstaller _MEIPASS / assets/data) into user store.CoreBootstrap.add_module_boot(    lambda p: module_llm_model_registry_boot(        resolve_packaged_assets_data_path("llm_models_registry.json", runtime_root=app_paths.root),        p.data_user_dir / "llm_models_registry.json",    ))# llm_providers: provider settings from app.ini; optional response logging and cache.CoreBootstrap.add_module_boot(    lambda p: module_llm_providers_boot(        config=app_config.llm_providers,        response_logger=response_logger,        cache_path=None,    ))# yandex_ocr: OCR settings from app.ini; cache under runtime cache directory.CoreBootstrap.add_module_boot(    lambda p: module_yandex_ocr_boot(        app_config.yandex_ocr,        response_logger=response_logger,        cache_path=p.cache_dir / "yandex_ocr",    ))# Execute registered module boot handlers in order.CoreBootstrap.modules_boot(app_paths)app_root: Path = app_paths.rootdef main(project_name: str | None = None) -> None:    """Точка входа CLI: проверка проекта и валидация конфига по имени."""    if not project_name:        SYSTEM_LOGGER.warning("Укажите проект: uv run python main.py --cli --project <имя>")        if getattr(sys, "frozen", False):            input("Press Enter to exit...")        return    from src.modules.project import ProjectManager, validate_project_config    project_root = ProjectManager(app_root).get_project_root_by_name(project_name)    if project_root is None:        SYSTEM_LOGGER.warning(            "Проект не найден: %s. Создайте папку projects/%s и положите docs/ с документами.",            project_name,            project_name,        )        if getattr(sys, "frozen", False):            input("Press Enter to exit...")        return    validation = validate_project_config(project_root, check_tokens=True)    if not validation.is_valid:        for msg in validation.errors:            SYSTEM_LOGGER.error("Валидация конфига: %s", msg)        raise ValueError("Конфигурация проекта невалидна. Исправьте ошибки и повторите запуск.")    SYSTEM_LOGGER.info("Проект: %s (конфиг валиден). Пайплайн из CLI не запускается.", project_root)    if getattr(sys, "frozen", False):        input("Press Enter to exit...")
+"""Application entry: bootstrap via app_bootstrap, then composition."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from src.app_bootstrap import app_bootstrap, app_modules_bootstrap
+from src.core.logger import SYSTEM_LOGGER
+
+# Core: directories, app.ini, logger; locales and language from [CORE].LANGUAGE.
+app_paths, app_config = app_bootstrap(None)
+app_modules_bootstrap((app_paths, app_config))
+
+app_root: Path = app_paths.root
+
+
+def main_cli(project_name: str | None = None) -> None:
+    """CLI entry: resolve project by name and validate its config."""
+    if not project_name:
+        SYSTEM_LOGGER.warning("Specify project: uv run python main.py --cli --project <name>")
+        if getattr(sys, "frozen", False):
+            input("Press Enter to exit...")
+        return
+    from src.modules.project import ProjectManager, validate_project_config
+
+    project_root = ProjectManager(app_root).get_project_root_by_name(project_name)
+    if project_root is None:
+        SYSTEM_LOGGER.warning(
+            "Project not found: %s. Create projects/%s and add docs/ with documents.",
+            project_name,
+            project_name,
+        )
+        if getattr(sys, "frozen", False):
+            input("Press Enter to exit...")
+        return
+    validation = validate_project_config(project_root, check_tokens=True)
+    if not validation.is_valid:
+        for msg in validation.errors:
+            SYSTEM_LOGGER.error("Config validation: %s", msg)
+        raise ValueError("Project configuration is invalid. Fix errors and run again.")
+    SYSTEM_LOGGER.info(
+        "Project: %s (config is valid). CLI pipeline is not started.",
+        project_root,
+    )
+    if getattr(sys, "frozen", False):
+        input("Press Enter to exit...")
+
+
+def main_gui(app_root: Path) -> None:
+    """Start the GUI configurator. app_root is the app root; GUIBootstrap.init builds Tk root, GUIController.init runs mainloop."""
+    from src.gui.bootstrap import GUIBootstrap
+    from src.gui.gui_controller import GUIController
+
+    try:
+        root = GUIBootstrap.init(app_root)
+        GUIController.init(app_root, root)
+    except Exception:
+        SYSTEM_LOGGER.exception("Critical error while starting GUI")
+        raise
+
+
+__all__ = ["app_config", "app_paths", "app_root", "main_cli", "main_gui"]

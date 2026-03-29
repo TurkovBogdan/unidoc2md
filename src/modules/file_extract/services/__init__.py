@@ -1,1 +1,17 @@
-"""Сервисы модуля file_extract."""__all__ = [    "FileExtractService",    "get_supported_extensions",]def __getattr__(name: str):    """Lazy imports to avoid circular dependency: providers.types -> services.file_extract_cache -> services -> providers."""    if name == "FileExtractService":        from .file_extract_service import FileExtractService        return FileExtractService    if name == "get_supported_extensions":        from ..providers import get_supported_extensions        return get_supported_extensions    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+"""Services for the file_extract module."""
+
+__all__ = [
+    "FileExtractService",
+    "get_supported_extensions",
+]
+
+
+def __getattr__(name: str):
+    """Lazy imports to avoid circular dependency: providers.types -> services.file_extract_cache -> services -> providers."""
+    if name == "FileExtractService":
+        from .file_extract_service import FileExtractService
+        return FileExtractService
+    if name == "get_supported_extensions":
+        from ..providers import get_supported_extensions
+        return get_supported_extensions
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

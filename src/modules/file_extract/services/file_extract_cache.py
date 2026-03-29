@@ -1,1 +1,311 @@
-"""Extract cache: save/load ExtractedDocument in `<project>/extract/<hash>/`."""from __future__ import annotationsimport jsonfrom pathlib import Pathfrom typing import Callable, Literalfrom src.modules.file_discovery.models import DiscoveredDocumentfrom src.core.utils.hash import md5_bytes, md5_file, md5_stringfrom ..constants import MIME_TEXT_MARKDOWN, MIME_TEXT_PLAIN, guess_mime_typefrom ..models import (    ExtractedDocument,    ExtractedDocumentContent,    ExtractConfig,    SEMANTIC_TYPE_DOCUMENT_FRAGMENT,    SEMANTIC_TYPE_MARKDOWN,    SEMANTIC_TYPE_REQUIRED_DETECTION,)class FileExtractCacheService:    """Saves and loads ExtractedDocument in cache dir extract/<hash>/."""    _TRANSLIT_MAP = str.maketrans(        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",        "abvgdeejzijklmnoprstufhzcss_y_eua",    )    _ALLOWED_NAME_CHARS = set("abcdefghijklmnoprstuvwxyz_-0123456789")    def __init__(self, config: ExtractConfig, document_hash: str | None = None) -> None:        self._config = config        cache_dir = config.cache_dir        self._base_dir = cache_dir / document_hash if document_hash else cache_dir    def _ensure_base_dir(self) -> Path:        self._base_dir.mkdir(parents=True, exist_ok=True)        return self._base_dir    def _build_artifact_path(self, filename: str) -> Path:        p = Path(filename)        safe_name = self.normalize_filename(p.stem) + (p.suffix or "")        return self._ensure_base_dir() / safe_name    @staticmethod    def normalize_filename(name: str) -> str:        """Normalize filename: lower → translit → spaces/dots to _ → only a-z, _, -, 0-9."""        if not name or not name.strip():            return "content"        s = name.strip().lower().translate(FileExtractCacheService._TRANSLIT_MAP)        s = s.replace(" ", "_").replace(".", "_")        s = "".join(c for c in s if c in FileExtractCacheService._ALLOWED_NAME_CHARS)        s = "_".join(filter(None, s.split("_")))        return s.strip("_") or "content"    @staticmethod    def _safe_stem(value: str) -> str:        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in value)        return safe or "content"    def save_text(self, text: str, filename: str) -> Path:        """Save text file to cache. Filename is normalized (translit, spaces/dots → _)."""        path = self._build_artifact_path(filename)        path.write_text(text, encoding="utf-8")        return path    def save_text_content(        self,        text: str,        filename: str,        content_type: str = "text",        semantic_type: str = SEMANTIC_TYPE_DOCUMENT_FRAGMENT,    ) -> ExtractedDocumentContent | None:        """If text is non-empty after trim — save to file, write .md5, return ExtractedDocumentContent; else None. Семантику задаёт вызывающий провайдер."""        t = (text or "").strip()        if not t:            return None        content_hash = md5_string(t)        path = self.save_text(t, filename)        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")        mime_type = self._mime_from_filename(path.name, content_type)        return ExtractedDocumentContent(            content_type=content_type,            semantic_type=semantic_type,            path=path,            mime_type=mime_type,            content_hash=content_hash,            value=t,        )    def save_bytes(self, data: bytes, filename: str) -> Path:        """Save binary file to cache. Filename is normalized."""        path = self._build_artifact_path(filename)        path.write_bytes(data)        return path    def save_generated_file_content(        self,        filename: str,        writer: Callable[[Path], None],        content_type: Literal["text", "image"] = "image",        semantic_type: str = SEMANTIC_TYPE_REQUIRED_DETECTION,    ) -> ExtractedDocumentContent:        """        Give caller the artifact path and let them write the file directly.        After write, compute hash, write .md5 and return ExtractedDocumentContent. Семантику задаёт вызывающий провайдер.        """        path = self._build_artifact_path(filename)        writer(path)        content_hash = md5_file(path)        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")        return ExtractedDocumentContent(            content_type=content_type,            semantic_type=semantic_type,            path=path,            mime_type=self._mime_from_filename(path.name, content_type),            content_hash=content_hash,            value=str(path),        )    def save_bytes_content(        self,        data: bytes,        filename: str,        content_type: Literal["text", "image"] = "image",        semantic_type: str = SEMANTIC_TYPE_REQUIRED_DETECTION,    ) -> ExtractedDocumentContent:        """Save bytes to file (with name normalization), write .md5 and return ExtractedDocumentContent. Семантику задаёт вызывающий провайдер."""        content_hash = md5_bytes(data)        path = self.save_bytes(data, filename)        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")        return ExtractedDocumentContent(            content_type=content_type,            semantic_type=semantic_type,            path=path,            mime_type=self._mime_from_filename(path.name, content_type),            content_hash=content_hash,            value=str(path),        )    def _content_hash_for_document(self, doc: ExtractedDocument, folder: Path) -> str:        """        content_hash = MD5 of concatenated hashes of content artifacts (in order).        If item has content_hash, use it; else read file. Empty string for missing path/file.        """        parts: list[str] = []        for item in doc.content:            if item.content_hash:                parts.append(item.content_hash)                continue            path_str = str(item.path) if item.path else ""            if not path_str:                parts.append("")                continue            p = Path(path_str)            if not p.is_absolute():                p = folder / p            if not p.is_file():                parts.append("")                continue            parts.append(md5_file(p))        combined = "".join(parts)        return md5_string(combined)    def _sidecar_hash_path(self, file_path: Path) -> Path:        """Path to .md5 sidecar next to the file."""        return file_path.with_suffix(file_path.suffix + ".md5")    def save_extracted_document(self, doc: ExtractedDocument) -> Path:        """        Save ExtractedDocument to <project>/extract/<hash>/:        extracted_document.json, content.md5; per-artifact .md5 and content_hash in payload.        """        folder = self._config.cache_dir / doc.extract_hash        folder.mkdir(parents=True, exist_ok=True)        payload_content: list[dict] = []        for item in doc.content:            path_str = str(item.path) if item.path else ""            abs_path: Path | None = None            if path_str:                p = Path(path_str)                abs_path = p if p.is_absolute() else folder / p            if path_str:                p = Path(path_str)                if p.is_absolute():                    try:                        path_str = str(p.relative_to(folder))                    except ValueError:                        path_str = p.name                else:                    path_str = p.name            item_hash = item.content_hash            if item_hash is None and abs_path and abs_path.is_file():                item_hash = md5_file(abs_path)                self._sidecar_hash_path(abs_path).write_text(item_hash, encoding="utf-8")            payload_content.append(                {                    "content_type": item.content_type,                    "semantic_type": item.semantic_type,                    "path": path_str,                    "mime_type": item.mime_type,                    "value": item.value,                    "content_hash": item_hash or item.content_hash,                }            )        content_hash = self._content_hash_for_document(doc, folder)        payload = {            "file_hash": doc.source.hash,            "extract_hash": doc.extract_hash,            "content_hash": content_hash,            "content": payload_content,        }        json_path = folder / "extracted_document.json"        json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")        sidecar_hash = folder / "content.md5"        sidecar_hash.write_text(content_hash, encoding="utf-8")        return folder    @staticmethod    def load_extracted_document(config: ExtractConfig, doc_hash: str) -> ExtractedDocument | None:        """        Load ExtractedDocument from <project>/extract/<doc_hash>/ if extracted_document.json exists.        Otherwise return None.        """        cache_folder = config.cache_dir / doc_hash        json_path = cache_folder / "extracted_document.json"        if not json_path.is_file():            return None        data = json.loads(json_path.read_text(encoding="utf-8"))        content: list[ExtractedDocumentContent] = []        for item in data.get("content", []):            # Все поля контента из кэша; путь — папка кэша + имя из кэша (в кэше только относительные/имена).            stored_path = item.get("path", "")            path_val = str(cache_folder / stored_path) if stored_path else None            raw_semantic = item.get("semantic_type", SEMANTIC_TYPE_DOCUMENT_FRAGMENT)            semantic = raw_semantic if raw_semantic in (                SEMANTIC_TYPE_MARKDOWN,                SEMANTIC_TYPE_REQUIRED_DETECTION,                SEMANTIC_TYPE_DOCUMENT_FRAGMENT,            ) else SEMANTIC_TYPE_DOCUMENT_FRAGMENT            content_item = ExtractedDocumentContent(                content_type=item.get("content_type", "text"),                semantic_type=semantic,                path=path_val,                mime_type=item.get("mime_type"),                value=item.get("value"),                content_hash=item.get("content_hash"),            )            content_item.value = FileExtractCacheService._normalize_loaded_value(content_item, content_item.value)            content.append(content_item)        return ExtractedDocument(            source=DiscoveredDocument(                path="",                folder=".",                filename="",                extension="",                mime_type=None,                hash=data.get("file_hash"),            ),            config=config,            extract_hash=data["extract_hash"],            content_hash=data.get("content_hash"),            content=content,        )    @staticmethod    def _mime_from_filename(filename: str, content_type: str) -> str | None:        by_name = guess_mime_type(filename)        if by_name:            return by_name        if content_type == "markdown":            return MIME_TEXT_MARKDOWN        if content_type == "text":            return MIME_TEXT_PLAIN        return None    @staticmethod    def _resolve_content_value(item: ExtractedDocumentContent) -> str | None:        path = item.path_obj()        if item.content_type == "image":            return str(path) if path is not None else None        if item.content_type in ("text", "markdown"):            if path is None:                return None            try:                return path.read_text(encoding="utf-8", errors="replace")            except OSError:                return None        return None    @staticmethod    def _normalize_loaded_value(item: ExtractedDocumentContent, stored_value: str | None) -> str | None:        """        Normalize cached value during load.        For images always use the rebuilt runtime path (project can be moved).        For text/markdown keep stored text when present; otherwise read from file.        """        if item.content_type == "image":            return FileExtractCacheService._resolve_content_value(item)        if item.content_type in ("text", "markdown"):            if isinstance(stored_value, str):                return stored_value            return FileExtractCacheService._resolve_content_value(item)        return stored_value if isinstance(stored_value, str) else None
+"""Extract cache: save/load ExtractedDocument in `<project>/extract/<hash>/`."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Callable, Literal
+
+from src.modules.file_discovery.models import DiscoveredDocument
+from src.core.utils.hash import md5_bytes, md5_file, md5_string
+from ..constants import MIME_TEXT_MARKDOWN, MIME_TEXT_PLAIN, guess_mime_type
+from ..models import (
+    ExtractedDocument,
+    ExtractedDocumentContent,
+    ExtractConfig,
+    SEMANTIC_TYPE_DOCUMENT_FRAGMENT,
+    SEMANTIC_TYPE_MARKDOWN,
+    SEMANTIC_TYPE_REQUIRED_DETECTION,
+)
+
+
+class FileExtractCacheService:
+    """Saves and loads ExtractedDocument in cache dir extract/<hash>/."""
+
+    _TRANSLIT_MAP = str.maketrans(
+        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+        "abvgdeejzijklmnoprstufhzcss_y_eua",
+    )
+    _ALLOWED_NAME_CHARS = set("abcdefghijklmnoprstuvwxyz_-0123456789")
+
+    def __init__(self, config: ExtractConfig, document_hash: str | None = None) -> None:
+        self._config = config
+        cache_dir = config.cache_dir
+        self._base_dir = cache_dir / document_hash if document_hash else cache_dir
+
+    def _ensure_base_dir(self) -> Path:
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+        return self._base_dir
+
+    def _build_artifact_path(self, filename: str) -> Path:
+        p = Path(filename)
+        safe_name = self.normalize_filename(p.stem) + (p.suffix or "")
+        return self._ensure_base_dir() / safe_name
+
+    @staticmethod
+    def normalize_filename(name: str) -> str:
+        """Normalize filename: lower → translit → spaces/dots to _ → only a-z, _, -, 0-9."""
+        if not name or not name.strip():
+            return "content"
+        s = name.strip().lower().translate(FileExtractCacheService._TRANSLIT_MAP)
+        s = s.replace(" ", "_").replace(".", "_")
+        s = "".join(c for c in s if c in FileExtractCacheService._ALLOWED_NAME_CHARS)
+        s = "_".join(filter(None, s.split("_")))
+        return s.strip("_") or "content"
+
+    @staticmethod
+    def _safe_stem(value: str) -> str:
+        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in value)
+        return safe or "content"
+
+    def save_text(self, text: str, filename: str) -> Path:
+        """Save text file to cache. Filename is normalized (translit, spaces/dots → _)."""
+        path = self._build_artifact_path(filename)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def save_text_content(
+        self,
+        text: str,
+        filename: str,
+        content_type: str = "text",
+        semantic_type: str = SEMANTIC_TYPE_DOCUMENT_FRAGMENT,
+    ) -> ExtractedDocumentContent | None:
+        """If text is non-empty after trim — save to file, write .md5, return ExtractedDocumentContent; else None. Semantic type is chosen by the caller."""
+        t = (text or "").strip()
+        if not t:
+            return None
+        content_hash = md5_string(t)
+        path = self.save_text(t, filename)
+        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")
+        mime_type = self._mime_from_filename(path.name, content_type)
+        return ExtractedDocumentContent(
+            content_type=content_type,
+            semantic_type=semantic_type,
+            path=path,
+            mime_type=mime_type,
+            content_hash=content_hash,
+            value=t,
+        )
+
+    def save_bytes(self, data: bytes, filename: str) -> Path:
+        """Save binary file to cache. Filename is normalized."""
+        path = self._build_artifact_path(filename)
+        path.write_bytes(data)
+        return path
+
+    def save_generated_file_content(
+        self,
+        filename: str,
+        writer: Callable[[Path], None],
+        content_type: Literal["text", "image"] = "image",
+        semantic_type: str = SEMANTIC_TYPE_REQUIRED_DETECTION,
+    ) -> ExtractedDocumentContent:
+        """
+        Give caller the artifact path and let them write the file directly.
+        After write, compute hash, write .md5 and return ExtractedDocumentContent. Semantic type is chosen by the caller.
+        """
+        path = self._build_artifact_path(filename)
+        writer(path)
+        content_hash = md5_file(path)
+        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")
+        return ExtractedDocumentContent(
+            content_type=content_type,
+            semantic_type=semantic_type,
+            path=path,
+            mime_type=self._mime_from_filename(path.name, content_type),
+            content_hash=content_hash,
+            value=str(path),
+        )
+
+    def save_bytes_content(
+        self,
+        data: bytes,
+        filename: str,
+        content_type: Literal["text", "image"] = "image",
+        semantic_type: str = SEMANTIC_TYPE_REQUIRED_DETECTION,
+    ) -> ExtractedDocumentContent:
+        """Save bytes to file (with name normalization), write .md5 and return ExtractedDocumentContent. Semantic type is chosen by the caller."""
+        content_hash = md5_bytes(data)
+        path = self.save_bytes(data, filename)
+        self._sidecar_hash_path(path).write_text(content_hash, encoding="utf-8")
+        return ExtractedDocumentContent(
+            content_type=content_type,
+            semantic_type=semantic_type,
+            path=path,
+            mime_type=self._mime_from_filename(path.name, content_type),
+            content_hash=content_hash,
+            value=str(path),
+        )
+
+    def _content_hash_for_document(self, doc: ExtractedDocument, folder: Path) -> str:
+        """
+        content_hash = MD5 of concatenated hashes of content artifacts (in order).
+        If item has content_hash, use it; else read file. Empty string for missing path/file.
+        """
+        parts: list[str] = []
+        for item in doc.content:
+            if item.content_hash:
+                parts.append(item.content_hash)
+                continue
+            path_str = str(item.path) if item.path else ""
+            if not path_str:
+                parts.append("")
+                continue
+            p = Path(path_str)
+            if not p.is_absolute():
+                p = folder / p
+            if not p.is_file():
+                parts.append("")
+                continue
+            parts.append(md5_file(p))
+        combined = "".join(parts)
+        return md5_string(combined)
+
+    @staticmethod
+    def _sidecar_hash_path(file_path: Path) -> Path:
+        """Path to .md5 sidecar next to the file."""
+        return file_path.with_suffix(file_path.suffix + ".md5")
+
+    def save_extracted_document(self, doc: ExtractedDocument) -> Path:
+        """
+        Save ExtractedDocument to <project>/extract/<hash>/:
+        extracted_document.json, content.md5; per-artifact .md5 and content_hash in payload.
+        """
+        folder = self._config.cache_dir / doc.extract_hash
+        folder.mkdir(parents=True, exist_ok=True)
+        payload_content: list[dict] = []
+        for item in doc.content:
+            path_str = str(item.path) if item.path else ""
+            abs_path: Path | None = None
+            if path_str:
+                p = Path(path_str)
+                abs_path = p if p.is_absolute() else folder / p
+            if path_str:
+                p = Path(path_str)
+                if p.is_absolute():
+                    try:
+                        path_str = str(p.relative_to(folder))
+                    except ValueError:
+                        path_str = p.name
+                else:
+                    path_str = p.name
+
+            item_hash = item.content_hash
+            if item_hash is None and abs_path and abs_path.is_file():
+                item_hash = md5_file(abs_path)
+                self._sidecar_hash_path(abs_path).write_text(item_hash, encoding="utf-8")
+
+            payload_content.append(
+                {
+                    "content_type": item.content_type,
+                    "semantic_type": item.semantic_type,
+                    "path": path_str,
+                    "mime_type": item.mime_type,
+                    "value": item.value,
+                    "content_hash": item_hash or item.content_hash,
+                }
+            )
+
+        content_hash = self._content_hash_for_document(doc, folder)
+
+        payload = {
+            "file_hash": doc.source.hash,
+            "extract_hash": doc.extract_hash,
+            "content_hash": content_hash,
+            "content": payload_content,
+        }
+        json_path = folder / "extracted_document.json"
+        json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        sidecar_hash = folder / "content.md5"
+        sidecar_hash.write_text(content_hash, encoding="utf-8")
+
+        return folder
+
+    @staticmethod
+    def load_extracted_document(config: ExtractConfig, doc_hash: str) -> ExtractedDocument | None:
+        """
+        Load ExtractedDocument from <project>/extract/<doc_hash>/ if extracted_document.json exists.
+        Otherwise return None.
+        """
+        cache_folder = config.cache_dir / doc_hash
+        json_path = cache_folder / "extracted_document.json"
+        if not json_path.is_file():
+            return None
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        content: list[ExtractedDocumentContent] = []
+        for item in data.get("content", []):
+            # All content fields from cache; path is cache folder + name from payload (payload stores relative names only).
+            stored_path = item.get("path", "")
+            path_val = str(cache_folder / stored_path) if stored_path else None
+            raw_semantic = item.get("semantic_type", SEMANTIC_TYPE_DOCUMENT_FRAGMENT)
+            semantic = raw_semantic if raw_semantic in (
+                SEMANTIC_TYPE_MARKDOWN,
+                SEMANTIC_TYPE_REQUIRED_DETECTION,
+                SEMANTIC_TYPE_DOCUMENT_FRAGMENT,
+            ) else SEMANTIC_TYPE_DOCUMENT_FRAGMENT
+            content_item = ExtractedDocumentContent(
+                content_type=item.get("content_type", "text"),
+                semantic_type=semantic,
+                path=path_val,
+                mime_type=item.get("mime_type"),
+                value=item.get("value"),
+                content_hash=item.get("content_hash"),
+            )
+            content_item.value = FileExtractCacheService._normalize_loaded_value(content_item, content_item.value)
+            content.append(content_item)
+        return ExtractedDocument(
+            source=DiscoveredDocument(
+                path="",
+                folder=".",
+                filename="",
+                extension="",
+                mime_type=None,
+                hash=data.get("file_hash"),
+            ),
+            config=config,
+            extract_hash=data["extract_hash"],
+            content_hash=data.get("content_hash"),
+            content=content,
+        )
+
+    @staticmethod
+    def _mime_from_filename(filename: str, content_type: str) -> str | None:
+        by_name = guess_mime_type(filename)
+        if by_name:
+            return by_name
+        if content_type == "markdown":
+            return MIME_TEXT_MARKDOWN
+        if content_type == "text":
+            return MIME_TEXT_PLAIN
+        return None
+
+    @staticmethod
+    def _resolve_content_value(item: ExtractedDocumentContent) -> str | None:
+        path = item.path_obj()
+        if item.content_type == "image":
+            return str(path) if path is not None else None
+        if item.content_type in ("text", "markdown"):
+            if path is None:
+                return None
+            try:
+                return path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return None
+        return None
+
+    @staticmethod
+    def _normalize_loaded_value(item: ExtractedDocumentContent, stored_value: str | None) -> str | None:
+        """
+        Normalize cached value during load.
+        For images always use the rebuilt runtime path (project can be moved).
+        For text/markdown keep stored text when present; otherwise read from file.
+        """
+        if item.content_type == "image":
+            return FileExtractCacheService._resolve_content_value(item)
+        if item.content_type in ("text", "markdown"):
+            if isinstance(stored_value, str):
+                return stored_value
+            return FileExtractCacheService._resolve_content_value(item)
+        return stored_value if isinstance(stored_value, str) else None

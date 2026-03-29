@@ -1,1 +1,71 @@
-"""Модалка уведомления: заголовок, сообщение, опционально плашка ошибок, кнопка «ОК»."""from __future__ import annotationsimport tkinter as tkfrom tkinter import ttkfrom src.core import locmsgfrom src.gui.template.elements.warning_banner import gui_element_warning_bannerfrom src.gui.template.styles import (    FONT_FAMILY_UI,    MODAL_MESSAGE_WRAP,    UI_FONT_SIZE,    UI_TYPOGRAPHY,    PALETTE,)from .base_modal import OverlayModalBaseclass InfoModal(OverlayModalBase):    """Уведомление: заголовок, сообщение, при наличии errors — warning_banner, кнопка «ОК»."""    def __init__(self, parent: tk.Misc, **kwargs) -> None:        self._title_var: tk.StringVar | None = None        self._message_var: tk.StringVar | None = None        self._errors_placeholder: tk.Frame | None = None        super().__init__(parent, **kwargs)    def _build_content(self, container: tk.Misc) -> None:        p = PALETTE        self._title_var = tk.StringVar(value="")        self._message_var = tk.StringVar(value="")        pady_after = UI_TYPOGRAPHY["header_2"]["pady_after"]        ttk.Label(            container,            textvariable=self._title_var,            style="ModalHeader2.TLabel",        ).pack(fill=tk.X, anchor=tk.W, pady=(0, pady_after))        tk.Label(            container,            textvariable=self._message_var,            wraplength=MODAL_MESSAGE_WRAP,            justify=tk.LEFT,            anchor=tk.W,            bg=p["bg_elevated"],            fg=p["text_primary"],            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),        ).pack(fill=tk.X, anchor=tk.W, pady=(0, 8))        self._errors_placeholder = tk.Frame(container, bg=p["bg_elevated"])        self._errors_placeholder.pack(fill=tk.X, pady=(0, 16))        ttk.Button(container, text=locmsg("gui.ok"), command=self.hide).pack(anchor=tk.E)    def show_info(        self,        title: str,        message: str,        *,        errors: list[str] | None = None,    ) -> None:        self._title_var.set(title)        self._message_var.set(message)        # Очистить предыдущую плашку ошибок и при необходимости показать новую        if self._errors_placeholder is not None:            for w in self._errors_placeholder.winfo_children():                w.destroy()            if errors:                gui_element_warning_banner(                    self._errors_placeholder,                    "Ошибки:\n" + "\n".join(errors),                ).pack(fill=tk.X)        self.show()
+"""Info modal: title, message, optional error banner, OK button."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from src.core import locmsg
+from src.gui.template.elements.warning_banner import gui_element_warning_banner
+from src.gui.template.styles import (
+    FONT_FAMILY_UI,
+    MODAL_MESSAGE_WRAP,
+    UI_FONT_SIZE,
+    UI_TYPOGRAPHY,
+    PALETTE,
+)
+
+from .base_modal import OverlayModalBase
+
+
+class InfoModal(OverlayModalBase):
+    """Notification: title, message, optional error banner, OK button."""
+
+    def __init__(self, parent: tk.Misc, **kwargs) -> None:
+        self._title_var: tk.StringVar | None = None
+        self._message_var: tk.StringVar | None = None
+        self._errors_placeholder: tk.Frame | None = None
+        super().__init__(parent, **kwargs)
+
+    def _build_content(self, container: tk.Misc) -> None:
+        p = PALETTE
+        self._title_var = tk.StringVar(value="")
+        self._message_var = tk.StringVar(value="")
+        pady_after = UI_TYPOGRAPHY["header_2"]["pady_after"]
+        ttk.Label(
+            container,
+            textvariable=self._title_var,
+            style="ModalHeader2.TLabel",
+        ).pack(fill=tk.X, anchor=tk.W, pady=(0, pady_after))
+        tk.Label(
+            container,
+            textvariable=self._message_var,
+            wraplength=MODAL_MESSAGE_WRAP,
+            justify=tk.LEFT,
+            anchor=tk.W,
+            bg=p["bg_elevated"],
+            fg=p["text_primary"],
+            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
+        ).pack(fill=tk.X, anchor=tk.W, pady=(0, 8))
+        self._errors_placeholder = tk.Frame(container, bg=p["bg_elevated"])
+        self._errors_placeholder.pack(fill=tk.X, pady=(0, 16))
+        ttk.Button(container, text=locmsg("gui.ok"), command=self.hide).pack(anchor=tk.E)
+
+    def show_info(
+        self,
+        title: str,
+        message: str,
+        *,
+        errors: list[str] | None = None,
+    ) -> None:
+        self._title_var.set(title)
+        self._message_var.set(message)
+        if self._errors_placeholder is not None:
+            for w in self._errors_placeholder.winfo_children():
+                w.destroy()
+            if errors:
+                gui_element_warning_banner(
+                    self._errors_placeholder,
+                    locmsg("gui.modal.errors_heading") + "\n" + "\n".join(errors),
+                ).pack(fill=tk.X)
+        self.show()

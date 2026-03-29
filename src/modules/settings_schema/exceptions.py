@@ -1,1 +1,5 @@
-"""Исключения модуля settings_schema."""class SettingsSchemaError(ValueError):    """Ошибка декларации схемы настроек."""
+"""Exceptions for the settings_schema module."""
+
+
+class SettingsSchemaError(ValueError):
+    """Invalid settings schema declaration."""

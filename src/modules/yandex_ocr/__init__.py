@@ -1,1 +1,36 @@
-"""Модуль OCR через Yandex Vision API: инициализация, шлюз, модели, ошибки."""from __future__ import annotationsfrom .bootstrap import module_yandex_ocr_bootfrom .errors import (    YandexOCRAuthError,    YandexOCRError,    YandexOCRResponseError,    YandexOCRTransportError,)from .models import YandexOCRRequest, YandexOCRResultfrom .module import (    DEFAULT_MODEL,    MODEL_TYPES,    PROVIDER_CODE,    YandexOCRConfig,    yandex_ocr_set_api_config,)from .providers import YandexOCRGateway__all__ = [    "DEFAULT_MODEL",    "MODEL_TYPES",    "PROVIDER_CODE",    "YandexOCRAuthError",    "YandexOCRError",    "YandexOCRGateway",    "YandexOCRRequest",    "YandexOCRResponseError",    "YandexOCRResult",    "YandexOCRTransportError",    "YandexOCRConfig",    "module_yandex_ocr_boot",    "yandex_ocr_set_api_config",]
+"""Yandex Vision OCR module: bootstrap, gateway, models, errors."""
+
+from __future__ import annotations
+
+from .bootstrap import module_yandex_ocr_boot
+from .errors import (
+    YandexOCRAuthError,
+    YandexOCRError,
+    YandexOCRResponseError,
+    YandexOCRTransportError,
+)
+from .models import YandexOCRRequest, YandexOCRResult
+from .module import (
+    DEFAULT_MODEL,
+    MODEL_TYPES,
+    PROVIDER_CODE,
+    YandexOCRConfig,
+    yandex_ocr_set_api_config,
+)
+from .providers import YandexOCRGateway
+
+__all__ = [
+    "DEFAULT_MODEL",
+    "MODEL_TYPES",
+    "PROVIDER_CODE",
+    "YandexOCRAuthError",
+    "YandexOCRError",
+    "YandexOCRGateway",
+    "YandexOCRRequest",
+    "YandexOCRResponseError",
+    "YandexOCRResult",
+    "YandexOCRTransportError",
+    "YandexOCRConfig",
+    "module_yandex_ocr_boot",
+    "yandex_ocr_set_api_config",
+]

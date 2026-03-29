@@ -1,1 +1,23 @@
-"""Константы уровней логирования (стандартные уровни Python logging)."""from __future__ import annotationsimport logging# Числовые уровни для setLevel / фильтрацииDEBUG = logging.DEBUGINFO = logging.INFOWARNING = logging.WARNINGERROR = logging.ERRORCRITICAL = logging.CRITICAL# Имена для конфигурации (строка -> уровень)LEVEL_BY_NAME: dict[str, int] = {    "DEBUG": DEBUG,    "INFO": INFO,    "WARNING": WARNING,    "ERROR": ERROR,    "CRITICAL": CRITICAL,}DEFAULT_LEVEL = INFO
+"""Log level constants (standard Python ``logging`` levels)."""
+
+from __future__ import annotations
+
+import logging
+
+# Numeric levels for setLevel / filtering
+DEBUG = logging.DEBUG
+INFO = logging.INFO
+WARNING = logging.WARNING
+ERROR = logging.ERROR
+CRITICAL = logging.CRITICAL
+
+# Name map for config (string -> level)
+LEVEL_BY_NAME: dict[str, int] = {
+    "DEBUG": DEBUG,
+    "INFO": INFO,
+    "WARNING": WARNING,
+    "ERROR": ERROR,
+    "CRITICAL": CRITICAL,
+}
+
+DEFAULT_LEVEL = INFO

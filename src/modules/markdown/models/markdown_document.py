@@ -1,1 +1,21 @@
-"""Модель результата markdown-этапа: путь файла, сырой текст, markdown и YAML-метаданные."""from __future__ import annotationsfrom dataclasses import dataclass, field@dataclassclass MarkdownDocument:    """Документ после markdown-этапа: относительный путь, имя, markdown и метаданные."""    relative_path: str    filename: str    text: str    markdown: str = ""    name: str | None = None    description: str | None = None    date: str | None = None    tags: list[str] = field(default_factory=list)    #: Порядок фрагментов из extract: ("text"|"markdown", тело). Markdown-куски не уходят в LLM как сырой текст.    segment_runs: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+"""Markdown-stage result model: file path, raw text, markdown body, and YAML metadata."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class MarkdownDocument:
+    """Document after the markdown stage: relative path, name, markdown body, and metadata."""
+
+    relative_path: str
+    filename: str
+    text: str
+    markdown: str = ""
+    name: str | None = None
+    description: str | None = None
+    date: str | None = None
+    tags: list[str] = field(default_factory=list)
+    #: Order of fragments from extract: ("text"|"markdown", body). Markdown segments are not sent to the LLM as raw text.
+    segment_runs: tuple[tuple[str, str], ...] = field(default_factory=tuple)

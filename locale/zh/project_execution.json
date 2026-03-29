@@ -1,5 +1,6 @@
 {
   "project_execution.window_title": "unidoc2md | 执行",
+  "project_execution.console_title": "数据处理",
   "project_execution.page_title": "项目执行",
   "project_execution.title_with_project": "执行：{name}",
   "project_execution.stage.discovery": "查找文件",

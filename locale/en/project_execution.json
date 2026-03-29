@@ -1,5 +1,6 @@
 {
   "project_execution.window_title": "unidoc2md | Execution",
+  "project_execution.console_title": "Data processing",
   "project_execution.page_title": "Project execution",
   "project_execution.title_with_project": "Execution: {name}",
   "project_execution.stage.discovery": "File discovery",

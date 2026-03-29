@@ -1,1 +1,7 @@
-"""Интерфейсы модуля file_extract."""from .file_extract_provider import FileExtractProvider__all__ = [    "FileExtractProvider",]
+"""Interfaces for the file_extract module."""
+
+from .file_extract_provider import FileExtractProvider
+
+__all__ = [
+    "FileExtractProvider",
+]

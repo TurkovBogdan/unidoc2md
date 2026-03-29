@@ -1,1 +1,109 @@
-"""Системный логгер и константы уровней."""from __future__ import annotationsimport sysimport tracebackfrom typing import Any, Callablefrom src.core.logger.log_levels import (    CRITICAL,    DEBUG,    DEFAULT_LEVEL,    ERROR,    INFO,    LEVEL_BY_NAME,    WARNING,)from src.core.logger.console_logger import ConsoleLoggerfrom src.core.logger.file_logger import FileLoggerfrom src.core.logger.system_logger import SystemLoggerfrom src.core.logger.system_logger_store import SystemLoggerStoredef get_system_logger() -> SystemLogger:    """Возвращает глобальный системный логгер (всегда не None)."""    return SystemLoggerStore.get()def set_system_logger(logger: SystemLogger | None) -> None:    """Устанавливает глобальный системный логгер (вызывается из bootstrap). None — сброс."""    if logger is None:        SystemLoggerStore.reset()        return    SystemLoggerStore.set(logger)def _format_msg(msg: Any, *args: Any, **kwargs: Any) -> str:    if args or kwargs:        try:            return str(msg) % args if args else str(msg) % kwargs        except (TypeError, KeyError):            return str(msg)    return str(msg)def _stderr_fallback(level: str, msg: Any, *args: Any, **kwargs: Any) -> None:    """Fallback в stderr при ошибках proxy (не используется при работе через store)."""    text = _format_msg(msg, *args, **kwargs)    print(f"[{level}] {text}", file=sys.stderr)    if level == "ERROR":        traceback.print_exc(file=sys.stderr)class _LoggerProxy:    """Прокси к системному логгеру через SystemLoggerStore.get(). Опционально дублирует в console sink (GUI)."""    _console_sink: Callable[[str], None] | None = None    def _log(self) -> SystemLogger:        return SystemLoggerStore.get()    def set_console_sink(self, sink: Callable[[str], None] | None) -> None:        """Подключает вывод в консоль приложения (например, виджет GUI). None — отключить."""        _LoggerProxy._console_sink = sink    def _emit(self, level: str, msg: Any, *args: Any, **kwargs: Any) -> None:        log = self._log()        getattr(log, level)(msg, *args, **kwargs)        sink = _LoggerProxy._console_sink        if sink is not None:            text = _format_msg(msg, *args, **kwargs)            level_name = level.upper()            sink(f"[{level_name}] {text}")    def debug(self, msg: Any, *args: Any, **kwargs: Any) -> None:        self._emit("debug", msg, *args, **kwargs)    def info(self, msg: Any, *args: Any, **kwargs: Any) -> None:        self._emit("info", msg, *args, **kwargs)    def warning(self, msg: Any, *args: Any, **kwargs: Any) -> None:        self._emit("warning", msg, *args, **kwargs)    def error(self, msg: Any, *args: Any, **kwargs: Any) -> None:        self._emit("error", msg, *args, **kwargs)    def exception(self, msg: Any, *args: Any, **kwargs: Any) -> None:        self._emit("exception", msg, *args, **kwargs)SYSTEM_LOGGER = _LoggerProxy()__all__ = [    "CRITICAL",    "ConsoleLogger",    "DEBUG",    "DEFAULT_LEVEL",    "ERROR",    "FileLogger",    "INFO",    "LEVEL_BY_NAME",    "SYSTEM_LOGGER",    "SystemLogger",    "SystemLoggerStore",    "WARNING",    "get_system_logger",    "set_system_logger",]
+"""System logger and log level constants."""
+
+from __future__ import annotations
+
+import sys
+import traceback
+from typing import Any, Callable
+
+from src.core.logger.log_levels import (
+    CRITICAL,
+    DEBUG,
+    DEFAULT_LEVEL,
+    ERROR,
+    INFO,
+    LEVEL_BY_NAME,
+    WARNING,
+)
+from src.core.logger.console_logger import ConsoleLogger
+from src.core.logger.file_logger import FileLogger
+from src.core.logger.system_logger import SystemLogger
+from src.core.logger.system_logger_store import SystemLoggerStore
+
+
+def get_system_logger() -> SystemLogger:
+    """Return the global system logger (never None)."""
+    return SystemLoggerStore.get()
+
+
+def set_system_logger(logger: SystemLogger | None) -> None:
+    """Set the global system logger (bootstrap). ``None`` resets."""
+    if logger is None:
+        SystemLoggerStore.reset()
+        return
+    SystemLoggerStore.set(logger)
+
+
+def _format_msg(msg: Any, *args: Any, **kwargs: Any) -> str:
+    if args or kwargs:
+        try:
+            return str(msg) % args if args else str(msg) % kwargs
+        except (TypeError, KeyError):
+            return str(msg)
+    return str(msg)
+
+
+def _stderr_fallback(level: str, msg: Any, *args: Any, **kwargs: Any) -> None:
+    """Fallback to stderr on proxy errors (unused when going through the store)."""
+    text = _format_msg(msg, *args, **kwargs)
+    print(f"[{level}] {text}", file=sys.stderr)
+    if level == "ERROR":
+        traceback.print_exc(file=sys.stderr)
+
+
+class _LoggerProxy:
+    """Proxy to the system logger via ``SystemLoggerStore.get()``; optional console sink (GUI)."""
+
+    _console_sink: Callable[[str], None] | None = None
+
+    def _log(self) -> SystemLogger:
+        return SystemLoggerStore.get()
+
+    def set_console_sink(self, sink: Callable[[str], None] | None) -> None:
+        """Route log lines to an app console (e.g. GUI widget). ``None`` disables."""
+        _LoggerProxy._console_sink = sink
+
+    def _emit(self, level: str, msg: Any, *args: Any, **kwargs: Any) -> None:
+        log = self._log()
+        getattr(log, level)(msg, *args, **kwargs)
+        sink = _LoggerProxy._console_sink
+        if sink is not None:
+            text = _format_msg(msg, *args, **kwargs)
+            level_name = level.upper()
+            sink(f"[{level_name}] {text}")
+
+    def debug(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        self._emit("debug", msg, *args, **kwargs)
+
+    def info(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        self._emit("info", msg, *args, **kwargs)
+
+    def warning(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        self._emit("warning", msg, *args, **kwargs)
+
+    def error(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        self._emit("error", msg, *args, **kwargs)
+
+    def exception(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+        self._emit("exception", msg, *args, **kwargs)
+
+
+SYSTEM_LOGGER = _LoggerProxy()
+
+
+__all__ = [
+    "CRITICAL",
+    "ConsoleLogger",
+    "DEBUG",
+    "DEFAULT_LEVEL",
+    "ERROR",
+    "FileLogger",
+    "INFO",
+    "LEVEL_BY_NAME",
+    "SYSTEM_LOGGER",
+    "SystemLogger",
+    "SystemLoggerStore",
+    "WARNING",
+    "get_system_logger",
+    "set_system_logger",
+]

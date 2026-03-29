@@ -1,4 +1,6 @@
 {
+  "home.window_title": "unidoc2md | Projects",
+  "home.empty_list": "No projects yet.",
   "home.title": "Projects",
   "home.files.one": "1 file",
   "home.files.zero": "0 files",
@@ -6,5 +8,10 @@
   "home.delete.title": "Delete project",
   "home.delete.message": "Delete project '{project_id}'? The entire project folder and all files inside will be removed.",
   "home.new_project.title": "New project",
-  "home.new_project.prompt": "Project name (folder under projects/):"
+  "home.new_project.prompt": "Project name (folder under projects/):",
+  "home.error.title": "Error",
+  "home.create.duplicate": "A project named '{name}' already exists.",
+  "home.delete.status_title": "Deletion",
+  "home.delete.already_removed": "This project was already removed.",
+  "home.delete.failed": "Could not delete the project: {detail}"
 }

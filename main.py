@@ -35,12 +35,14 @@ def _run_app() -> None:
         pass
 
     if "--cli" in sys.argv:
-        from src.app import main as cli_main  # noqa: E402
+        from src.app import main_cli  # noqa: E402
+
         project_name = _parse_cli_project(sys.argv)
-        cli_main(project_name)
+        main_cli(project_name)
     else:
-        from src.gui import main  # noqa: E402
-        main(app_root)
+        from src.app import main_gui  # noqa: E402
+
+        main_gui(app_root)
 
 
 def _fatal_error(message: str, is_gui: bool) -> None:

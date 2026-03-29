@@ -1,1 +1,5 @@
-"""Старт GUI: шрифты, root, тема, иконка."""from .startup import GUIBootstrap__all__ = ["GUIBootstrap"]
+"""GUI startup: fonts, root window, theme, icon."""
+
+from .startup import GUIBootstrap
+
+__all__ = ["GUIBootstrap"]

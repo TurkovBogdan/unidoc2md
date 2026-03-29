@@ -1,1 +1,52 @@
-"""Единая точка получения путей ядра (core-level): модель и фабрика от root."""from __future__ import annotationsimport osimport sysfrom dataclasses import dataclassfrom pathlib import Path# Корень репозитория: src/core/app_path.py -> project root_PROJECT_ROOT = Path(__file__).resolve().parents[2]def resolve_runtime_root(profile: str | None = None) -> Path:    """    Корень рабочей среды (runtime).    - Собранное приложение (frozen): каталог с exe — root, в нём создаются data/, logs/, projects/ и т.д.    - Запуск из исходников: project_root / runtime / <profile>, профиль из APP_PROFILE или "dev".    """    if getattr(sys, "frozen", False):        return Path(sys.executable).resolve().parent    _profile = profile if profile is not None else os.getenv("APP_PROFILE", "dev")    return _PROJECT_ROOT / "runtime" / _profiledef project_root() -> Path:    """Корень репозитория (project root)."""    return _PROJECT_ROOTdef resolve_packaged_assets_data_path(file_name: str, *, runtime_root: Path | None = None) -> Path:    """    Путь к файлу ``assets/data/<file_name>``.    - Запуск из исходников: ``<project_root>/assets/data/...``.    - PyInstaller onefile (``sys.frozen``): если в ``sys._MEIPASS`` лежит такой файл — он      (данные из ``datas`` в .spec); иначе путь рядом с exe: ``<runtime_root>/assets/data/...``      (onedir или ручная раскладка).    """    name = (file_name or "").strip()    if not name:        raise ValueError("file_name must be non-empty")    if getattr(sys, "frozen", False):        meipass = getattr(sys, "_MEIPASS", None)        if meipass:            bundled = Path(meipass) / "assets" / "data" / name            if bundled.is_file():                return bundled        base = runtime_root if runtime_root is not None else resolve_runtime_root()        return base / "assets" / "data" / name    return project_root() / "assets" / "data" / namedef _default_app_root() -> Path:    """Возвращает runtime root для boundary-слоя (bootstrap, fallback)."""    return resolve_runtime_root()@dataclass(frozen=True)class AppPath:    """Типизированные пути корня приложения и стандартных каталогов/файлов."""    root: Path    app_ini: Path    logs_dir: Path    system_log: Path    data_dir: Path    source_dir: Path    data_user_dir: Path    projects_dir: Path    cache_dir: Path    temp_dir: Path    @staticmethod    def from_root(root: Path | None = None) -> AppPath:        """Строит AppPath от корня приложения. По умолчанию (root=None) — resolve_runtime_root()."""        resolved = Path(root) if root is not None else _default_app_root()        return AppPath(            root=resolved,            app_ini=resolved / "app.ini",            logs_dir=resolved / "logs",            system_log=resolved / "logs" / "system.log",            data_dir=resolved / "data",            source_dir=resolved / "data" / "source",            data_user_dir=resolved / "data" / "user",            projects_dir=resolved / "projects",            cache_dir=resolved / "cache",            temp_dir=resolved / "temp",        )
+"""Core-level path resolution: model and factory from a root."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+# Repository root: src/core/app_path.py -> project root
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def resolve_runtime_root(profile: str | None = None) -> Path:
+    """
+    Runtime working directory root.
+    - Frozen build: directory containing the exe is root; data/, logs/, projects/, etc. live there.
+    - Source run: ``project_root / runtime / <profile>``; profile from ``APP_PROFILE`` or ``"dev"``.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+
+    _profile = profile if profile is not None else os.getenv("APP_PROFILE", "dev")
+    return _PROJECT_ROOT / "runtime" / _profile
+
+
+def project_root() -> Path:
+    """Repository (project) root."""
+    return _PROJECT_ROOT
+
+
+def resolve_packaged_assets_data_path(file_name: str, *, runtime_root: Path | None = None) -> Path:
+    """
+    Path to ``assets/data/<file_name>``.
+
+    - Source run: ``<project_root>/assets/data/...``.
+    - PyInstaller onefile (``sys.frozen``): if that file exists under ``sys._MEIPASS``, use it
+      (bundled via ``datas`` in the .spec); else next to the exe: ``<runtime_root>/assets/data/...``
+      (onedir or manual layout).
+    """
+    name = (file_name or "").strip()
+    if not name:
+        raise ValueError("file_name must be non-empty")
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            bundled = Path(meipass) / "assets" / "data" / name
+            if bundled.is_file():
+                return bundled
+        base = runtime_root if runtime_root is not None else resolve_runtime_root()
+        return base / "assets" / "data" / name
+    return project_root() / "assets" / "data" / name
+

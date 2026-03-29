@@ -1,1 +1,21 @@
-"""Экраны конфигуратора."""from .base_screen import BaseGUIScreenfrom .home import ProjectListScreenfrom .loader import LoadingScreenfrom .models import ModelSettingsScreenfrom .models_detail import ModelSettingsDetailScreenfrom .project_execution import ProjectPipelineScreenfrom .project_config import ProjectConfigScreenfrom .settings import SettingsScreen__all__ = [    "BaseGUIScreen",    "ProjectListScreen",    "LoadingScreen",    "ModelSettingsScreen",    "ModelSettingsDetailScreen",    "ProjectConfigScreen",    "ProjectPipelineScreen",    "SettingsScreen",]
+"""Configurator screens."""
+
+from .base_screen import BaseGUIScreen
+from .home import ProjectListScreen
+from .loader import LoadingScreen
+from .models import ModelSettingsScreen
+from .models_detail import ModelSettingsDetailScreen
+from .project_execution import ProjectPipelineScreen
+from .project_config import ProjectConfigScreen
+from .settings import SettingsScreen
+
+__all__ = [
+    "BaseGUIScreen",
+    "ProjectListScreen",
+    "LoadingScreen",
+    "ModelSettingsScreen",
+    "ModelSettingsDetailScreen",
+    "ProjectConfigScreen",
+    "ProjectPipelineScreen",
+    "SettingsScreen",
+]

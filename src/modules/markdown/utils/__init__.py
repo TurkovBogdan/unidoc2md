@@ -1,1 +1,17 @@
-"""Утилиты модуля markdown."""from .normalize import normalize_markdown, normalize_markdown_tables, normalize_markdown_yamlfrom .yaml_frontmatter import (    build_markdown_from_document,    clear_markdown_yaml,    extract_markdown_yaml,)__all__ = [    "build_markdown_from_document",    "clear_markdown_yaml",    "extract_markdown_yaml",    "normalize_markdown",    "normalize_markdown_tables",    "normalize_markdown_yaml",]
+"""Utilities for the markdown module."""
+
+from .normalize import normalize_markdown, normalize_markdown_tables, normalize_markdown_yaml
+from .yaml_frontmatter import (
+    build_markdown_from_document,
+    clear_markdown_yaml,
+    extract_markdown_yaml,
+)
+
+__all__ = [
+    "build_markdown_from_document",
+    "clear_markdown_yaml",
+    "extract_markdown_yaml",
+    "normalize_markdown",
+    "normalize_markdown_tables",
+    "normalize_markdown_yaml",
+]

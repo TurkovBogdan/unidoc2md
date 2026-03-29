@@ -1,1 +1,203 @@
-"""Обработчик секции image_processing конфигурации проекта: умолчания, валидация и доступные значения по app.ini."""from __future__ import annotationsfrom dataclasses import dataclassfrom types import SimpleNamespacefrom typing import Anyfrom src.core import locmsgfrom src.core.app_config_store import AppConfigStorefrom src.modules.yandex_ocr.module import YandexOCRConfig# Константы и ключи секции image_processing (второй элемент — msgid для locmsg)IMAGE_PROCESSING_LOGICS = SimpleNamespace(    skip="skip",    ocr_only="ocr_only",    vision_only="vision_only",    options=(        ("skip", "project_image_processing.logic.skip"),        ("ocr_only", "project_image_processing.logic.ocr_only"),        ("vision_only", "project_image_processing.logic.vision_only"),    ),    valid_codes=frozenset({"skip", "ocr_only", "vision_only"}),)IMAGE_PROCESSING_DEFAULTS = SimpleNamespace(    ocr_provider="yandex_ocr",    ocr_model="page",    vision_provider="",    vision_model="",    vision_reasoning="disabled",    vision_system_prompt="",    vision_temperature=0.3,)IMAGE_PROCESSING_KEYS = SimpleNamespace(    image_processing_logic="image_processing_logic",    ocr_provider="ocr_provider",    ocr_model="ocr_model",    vision_provider="vision_provider",    vision_model="vision_model",    vision_reasoning="vision_reasoning",    vision_system_prompt="vision_system_prompt",    vision_temperature="vision_temperature",)class ImageProcessingConfig:    """Статический класс для работы с секцией image_processing: умолчания, валидация, доступные значения по app.ini."""    IMAGE_PROCESSING_LOGICS = IMAGE_PROCESSING_LOGICS    IMAGE_PROCESSING_DEFAULTS = IMAGE_PROCESSING_DEFAULTS    IMAGE_PROCESSING_KEYS = IMAGE_PROCESSING_KEYS    @dataclass(frozen=True)    class AvailableValues:        """Доступные провайдеры и модели по app.ini (для валидации и UI)."""        processing_logic: tuple[tuple[str, str], ...]        ocr_available: bool        ocr_providers: list[str]        ocr_models: list[str]        vision_available: bool        vision_providers: list[str]        vision_models: dict[str, list[str]]    @staticmethod    def get_default() -> dict[str, Any]:        """Возвращает словарь умолчаний для секции image_processing."""        L = IMAGE_PROCESSING_LOGICS        D = IMAGE_PROCESSING_DEFAULTS        K = IMAGE_PROCESSING_KEYS        return {            K.image_processing_logic: L.skip,            K.ocr_provider: D.ocr_provider,            K.ocr_model: D.ocr_model,            K.vision_provider: D.vision_provider,            K.vision_model: D.vision_model,            K.vision_reasoning: D.vision_reasoning,            K.vision_system_prompt: D.vision_system_prompt,            K.vision_temperature: D.vision_temperature,        }    @staticmethod    def validate(data: Any) -> list[str]:        """Проверяет данные секции image_processing. Возвращает список сообщений об ошибках (пустой — данные валидны)."""        errors: list[str] = []        if not isinstance(data, dict):            errors.append("Image_processing: ожидается объект (dict).")            return errors        L = IMAGE_PROCESSING_LOGICS        K = IMAGE_PROCESSING_KEYS        logic = data.get(K.image_processing_logic) or L.skip        if isinstance(logic, str):            logic = logic.strip().lower()        else:            logic = ""        if logic not in L.valid_codes:            errors.append(                f"Image_processing: image_processing_logic должен быть один из: {', '.join(sorted(L.valid_codes))}."            )        for key in (            K.ocr_provider,            K.ocr_model,            K.vision_provider,            K.vision_model,            K.vision_reasoning,            K.vision_system_prompt,        ):            val = data.get(key)            if val is not None and not isinstance(val, str):                errors.append(f"Image_processing: поле {key} должно быть строкой.")        t = data.get(K.vision_temperature)        if t is not None:            try:                tf = float(t)                if not (0.0 <= tf <= 2.0):                    errors.append("Image_processing: vision_temperature должен быть от 0.0 до 2.0.")            except (TypeError, ValueError):                errors.append("Image_processing: vision_temperature должен быть числом.")        reason = (data.get(K.vision_reasoning) or "").strip().lower()        if reason and reason not in ("disabled", "low", "medium", "high"):            errors.append(                "Image_processing: vision_reasoning должен быть один из: disabled, low, medium, high."            )        return errors    @staticmethod    def is_ocr_available(yandex_ocr: YandexOCRConfig | None = None) -> bool:        """Проверяет доступность Yandex OCR по конфигу yandex_ocr."""        if yandex_ocr is None:            yandex_ocr = AppConfigStore.get().yandex_ocr        return yandex_ocr.is_available()    @staticmethod    def get_available_values() -> "ImageProcessingConfig.AvailableValues":        """Доступные значения по app.ini для валидации и построения UI (processing_logic, ocr/vision)."""        config = AppConfigStore.get()        lp = config.llm_providers        yo = config.yandex_ocr        ocr_available = ImageProcessingConfig.is_ocr_available(yo)        ocr_providers: list[str] = []        ocr_models_list: list[str] = []        if ocr_available:            from src.modules.yandex_ocr import MODEL_TYPES, PROVIDER_CODE            ocr_providers = [PROVIDER_CODE]            ocr_models_list = list(MODEL_TYPES)        if config.core.debug:            if "mock" not in ocr_providers:                ocr_providers = ["mock", *ocr_providers]        from src.modules.llm_models_registry import LLMModelManager        providers_with_keys: list[str] = []        for code in ("anthropic", "google", "openai", "xai"):            if lp.is_provider_available(code):                providers_with_keys.append(code)        if config.core.debug:            providers_with_keys = ["mock", *providers_with_keys]        manager = LLMModelManager()        vision_providers_list: list[str] = []        vision_models_dict: dict[str, list[str]] = {}        for provider_code in providers_with_keys:            records = [                r                for r in manager.get_sorted_records()                if (r.get("provider") or r.get("provider_code") or "").strip() == provider_code                and r.get("enabled", True)                and r.get("input_image", False)            ]            model_codes = [str(r.get("name") or r.get("code") or "").strip() for r in records]            model_codes = [c for c in model_codes if c]            if model_codes:                vision_providers_list.append(provider_code)                vision_models_dict[provider_code] = model_codes        vision_available = len(vision_providers_list) > 0        result: list[tuple[str, str]] = []        for code, msgid in IMAGE_PROCESSING_LOGICS.options:            if code == IMAGE_PROCESSING_LOGICS.skip:                result.append((code, locmsg(msgid)))            elif code == IMAGE_PROCESSING_LOGICS.ocr_only and ocr_available:                result.append((code, locmsg(msgid)))            elif code == IMAGE_PROCESSING_LOGICS.vision_only and vision_available:                result.append((code, locmsg(msgid)))        processing_logic = tuple(result)        return ImageProcessingConfig.AvailableValues(            processing_logic=processing_logic,            ocr_available=ocr_available,            ocr_providers=ocr_providers,            ocr_models=ocr_models_list,            vision_available=vision_available,            vision_providers=vision_providers_list,            vision_models=vision_models_dict,        )
+"""Обработчик секции image_processing конфигурации проекта: умолчания, валидация и доступные значения по app.ini."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
+
+from src.core import locmsg
+from src.core.app_config_store import AppConfigStore
+from src.modules.yandex_ocr.module import YandexOCRConfig
+
+# Константы и ключи секции image_processing (второй элемент — msgid для locmsg)
+IMAGE_PROCESSING_LOGICS = SimpleNamespace(
+    skip="skip",
+    ocr_only="ocr_only",
+    vision_only="vision_only",
+    options=(
+        ("skip", "project_image_processing.logic.skip"),
+        ("ocr_only", "project_image_processing.logic.ocr_only"),
+        ("vision_only", "project_image_processing.logic.vision_only"),
+    ),
+    valid_codes=frozenset({"skip", "ocr_only", "vision_only"}),
+)
+
+IMAGE_PROCESSING_DEFAULTS = SimpleNamespace(
+    ocr_provider="yandex_ocr",
+    ocr_model="page",
+    vision_provider="",
+    vision_model="",
+    vision_reasoning="disabled",
+    vision_system_prompt="",
+    vision_temperature=0.3,
+)
+IMAGE_PROCESSING_KEYS = SimpleNamespace(
+    image_processing_logic="image_processing_logic",
+    ocr_provider="ocr_provider",
+    ocr_model="ocr_model",
+    vision_provider="vision_provider",
+    vision_model="vision_model",
+    vision_reasoning="vision_reasoning",
+    vision_system_prompt="vision_system_prompt",
+    vision_temperature="vision_temperature",
+)
+
+
+class ImageProcessingConfig:
+    """Статический класс для работы с секцией image_processing: умолчания, валидация, доступные значения по app.ini."""
+
+    IMAGE_PROCESSING_LOGICS = IMAGE_PROCESSING_LOGICS
+    IMAGE_PROCESSING_DEFAULTS = IMAGE_PROCESSING_DEFAULTS
+    IMAGE_PROCESSING_KEYS = IMAGE_PROCESSING_KEYS
+
+    @dataclass(frozen=True)
+    class AvailableValues:
+        """Доступные провайдеры и модели по app.ini (для валидации и UI)."""
+
+        processing_logic: tuple[tuple[str, str], ...]
+        ocr_available: bool
+        ocr_providers: list[str]
+        ocr_models: list[str]
+        vision_available: bool
+        vision_providers: list[str]
+        vision_models: dict[str, list[str]]
+
+    @staticmethod
+    def get_default() -> dict[str, Any]:
+        """Возвращает словарь умолчаний для секции image_processing."""
+        L = IMAGE_PROCESSING_LOGICS
+        D = IMAGE_PROCESSING_DEFAULTS
+        K = IMAGE_PROCESSING_KEYS
+        return {
+            K.image_processing_logic: L.skip,
+            K.ocr_provider: D.ocr_provider,
+            K.ocr_model: D.ocr_model,
+            K.vision_provider: D.vision_provider,
+            K.vision_model: D.vision_model,
+            K.vision_reasoning: D.vision_reasoning,
+            K.vision_system_prompt: D.vision_system_prompt,
+            K.vision_temperature: D.vision_temperature,
+        }
+
+    @staticmethod
+    def validate(data: Any) -> list[str]:
+        """Проверяет данные секции image_processing. Возвращает список сообщений об ошибках (пустой — данные валидны)."""
+        errors: list[str] = []
+        if not isinstance(data, dict):
+            errors.append("Image_processing: ожидается объект (dict).")
+            return errors
+        L = IMAGE_PROCESSING_LOGICS
+        K = IMAGE_PROCESSING_KEYS
+        logic = data.get(K.image_processing_logic) or L.skip
+        if isinstance(logic, str):
+            logic = logic.strip().lower()
+        else:
+            logic = ""
+        if logic not in L.valid_codes:
+            errors.append(
+                f"Image_processing: image_processing_logic должен быть один из: {', '.join(sorted(L.valid_codes))}."
+            )
+        for key in (
+            K.ocr_provider,
+            K.ocr_model,
+            K.vision_provider,
+            K.vision_model,
+            K.vision_reasoning,
+            K.vision_system_prompt,
+        ):
+            val = data.get(key)
+            if val is not None and not isinstance(val, str):
+                errors.append(f"Image_processing: поле {key} должно быть строкой.")
+        t = data.get(K.vision_temperature)
+        if t is not None:
+            try:
+                tf = float(t)
+                if not (0.0 <= tf <= 2.0):
+                    errors.append("Image_processing: vision_temperature должен быть от 0.0 до 2.0.")
+            except (TypeError, ValueError):
+                errors.append("Image_processing: vision_temperature должен быть числом.")
+        reason = (data.get(K.vision_reasoning) or "").strip().lower()
+        if reason and reason not in ("disabled", "low", "medium", "high"):
+            errors.append(
+                "Image_processing: vision_reasoning должен быть один из: disabled, low, medium, high."
+            )
+        return errors
+
+    @staticmethod
+    def is_ocr_available(yandex_ocr: YandexOCRConfig | None = None) -> bool:
+        """Проверяет доступность Yandex OCR по конфигу yandex_ocr."""
+        if yandex_ocr is None:
+            yandex_ocr = AppConfigStore.get().yandex_ocr
+        return yandex_ocr.is_available()
+
+    @staticmethod
+    def get_available_values() -> "ImageProcessingConfig.AvailableValues":
+        """Доступные значения по app.ini для валидации и построения UI (processing_logic, ocr/vision)."""
+        config = AppConfigStore.get()
+        lp = config.llm_providers
+        yo = config.yandex_ocr
+
+        ocr_available = ImageProcessingConfig.is_ocr_available(yo)
+        ocr_providers: list[str] = []
+        ocr_models_list: list[str] = []
+        if ocr_available:
+            from src.modules.yandex_ocr import MODEL_TYPES, PROVIDER_CODE
+
+            ocr_providers = [PROVIDER_CODE]
+            ocr_models_list = list(MODEL_TYPES)
+        if config.core.debug:
+            if "mock" not in ocr_providers:
+                ocr_providers = ["mock", *ocr_providers]
+
+        from src.modules.llm_models_registry import LLMModelManager
+
+        providers_with_keys: list[str] = []
+        for code in ("anthropic", "google", "openai", "xai"):
+            if lp.is_provider_available(code):
+                providers_with_keys.append(code)
+        if config.core.debug:
+            providers_with_keys = ["mock", *providers_with_keys]
+
+        vision_providers_list: list[str] = []
+        vision_models_dict: dict[str, list[str]] = {}
+        try:
+            llm_registry_manager = LLMModelManager()
+        except RuntimeError:
+            llm_registry_manager = None
+        if llm_registry_manager is not None:
+            for provider_code in providers_with_keys:
+                records = [
+                    r
+                    for r in llm_registry_manager.get_sorted_records()
+                    if (r.get("provider") or r.get("provider_code") or "").strip()
+                    == provider_code
+                    and r.get("enabled", True)
+                    and r.get("input_image", False)
+                ]
+                model_codes = [str(r.get("name") or r.get("code") or "").strip() for r in records]
+                model_codes = [c for c in model_codes if c]
+                if model_codes:
+                    vision_providers_list.append(provider_code)
+                    vision_models_dict[provider_code] = model_codes
+        vision_available = len(vision_providers_list) > 0
+
+        result: list[tuple[str, str]] = []
+        for code, msgid in IMAGE_PROCESSING_LOGICS.options:
+            if code == IMAGE_PROCESSING_LOGICS.skip:
+                result.append((code, locmsg(msgid)))
+            elif code == IMAGE_PROCESSING_LOGICS.ocr_only and ocr_available:
+                result.append((code, locmsg(msgid)))
+            elif code == IMAGE_PROCESSING_LOGICS.vision_only and vision_available:
+                result.append((code, locmsg(msgid)))
+        processing_logic = tuple(result)
+
+        return ImageProcessingConfig.AvailableValues(
+            processing_logic=processing_logic,
+            ocr_available=ocr_available,
+            ocr_providers=ocr_providers,
+            ocr_models=ocr_models_list,
+            vision_available=vision_available,
+            vision_providers=vision_providers_list,
+            vision_models=vision_models_dict,
+        )

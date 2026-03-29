@@ -10,9 +10,13 @@
   "settings.application.desc.language": "GUI language; stored in the application configuration.",
   "settings.application.desc.debug": "Adds providers for testing the app and saves detailed logs about its operation.",
   "settings.application.desc.log_level": "Minimum level of messages written to the log file.",
+  "settings.llm.label.api_key": "API key",
   "settings.llm.label.gateway_timeout": "Gateway timeout",
   "settings.llm.desc.gateway_timeout": "Maximum time to wait for an API response when calling LLM providers.",
   "settings.llm.article": "LLM providers are used in pipeline stages that need text models (for example Markdown generation or tagging).\n\nIf a provider offers multimodal models (they accept images), you can use them to recognize text in documents.\n\nIn the row labeled with the provider name, choose \"Enabled\" and enter the API key for each service you use. When \"Disabled\", key fields are hidden. Keys are stored in the application configuration on this machine.\n\nGateway timeout is the maximum wait time for an API response (in seconds). Increase it on slow networks; very high values slow down failure detection.",
+  "settings.ocr.label.yandex_ocr": "Yandex OCR",
+  "settings.ocr.label.key_id": "Key ID",
+  "settings.ocr.label.key_secret": "Key secret",
   "settings.ocr.article": "Yandex OCR is used during image processing when the project uses OCR mode.\n\nIn the \"Yandex OCR\" row, choose \"Enabled\" and enter Key ID and Key Secret from Yandex Cloud. When \"Disabled\", the key block is hidden. Without valid keys, Yandex recognition will be unavailable.\n\nKeys are stored locally in app.ini (or the linked configuration store).",
   "settings.save_modal.title": "Settings",
   "settings.save_modal.message": "Settings have been saved."

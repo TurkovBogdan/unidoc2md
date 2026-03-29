@@ -1,4 +1,6 @@
 {
+  "home.window_title": "unidoc2md | 项目",
+  "home.empty_list": "暂无项目。",
   "home.title": "项目",
   "home.files.one": "1 个文件",
   "home.files.zero": "0 个文件",
@@ -6,5 +8,10 @@
   "home.delete.title": "删除项目",
   "home.delete.message": "删除项目「{project_id}」吗？整个项目文件夹及其中的文件都将被删除。",
   "home.new_project.title": "新建项目",
-  "home.new_project.prompt": "项目名称（将创建在 projects/ 下）："
+  "home.new_project.prompt": "项目名称（将创建在 projects/ 下）：",
+  "home.error.title": "错误",
+  "home.create.duplicate": "名为「{name}」的项目已存在。",
+  "home.delete.status_title": "删除",
+  "home.delete.already_removed": "该项目已被删除。",
+  "home.delete.failed": "无法删除项目：{detail}"
 }

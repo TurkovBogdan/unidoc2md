@@ -1,1 +1,5 @@
-"""Контракты ядра приложения."""from .logger import LoggerProtocol__all__ = ["LoggerProtocol"]
+"""Application core contracts."""
+
+from .logger import LoggerProtocol
+
+__all__ = ["LoggerProtocol"]

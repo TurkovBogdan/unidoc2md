@@ -1,4 +1,5 @@
 {
+  "gui.window_title": "unidoc2md — 项目配置",
   "gui.save": "保存",
   "gui.back": "返回",
   "gui.edit": "编辑",
@@ -24,5 +25,8 @@
   "gui.project.stop": "停止",
   "gui.project.stop_pending": "正在停止...",
   "gui.project.open_documents": "打开文档",
-  "gui.project.open_results": "打开结果"
+  "gui.project.open_results": "打开结果",
+  "gui.modal.errors_heading": "错误：",
+  "gui.modal.confirm_title": "确认",
+  "gui.error.open_project_title": "无法打开项目"
 }

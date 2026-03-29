@@ -1,1 +1,22 @@
-"""Открытие папки в файловом менеджере."""from __future__ import annotationsimport osimport subprocessimport sysfrom pathlib import Pathdef open_folder(path: Path | str) -> None:    """Открывает папку в системном файловом менеджере."""    path = Path(path).resolve()    if not path.is_dir():        return    path_str = os.fspath(path)    if sys.platform == "win32":        os.startfile(path_str)    elif sys.platform == "darwin":        subprocess.run(["open", path_str], check=False)    else:        subprocess.run(["xdg-open", path_str], check=False)
+"""Open a folder in the system file manager."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def open_folder(path: Path | str) -> None:
+    """Open a directory in the OS file manager."""
+    path = Path(path).resolve()
+    if not path.is_dir():
+        return
+    path_str = os.fspath(path)
+    if sys.platform == "win32":
+        os.startfile(path_str)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", path_str], check=False)
+    else:
+        subprocess.run(["xdg-open", path_str], check=False)

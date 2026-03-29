@@ -1,1 +1,97 @@
-"""Этап result: сохранение markdown-документов в каталог result проекта."""from __future__ import annotationsfrom pathlib import Pathfrom typing import Anyfrom src.modules.markdown.models import MarkdownDocumentfrom src.modules.markdown.utils import build_markdown_from_document, normalize_markdownfrom src.modules.project.sections.pipeline_config import PipelineConfigfrom ..base import BasePipelineStagefrom ...models import (    PipelineContext,    StageResult,)from .documents_index_file import DocumentsIndexFile, result_relative_md_pathclass ResultStage(BasePipelineStage):    """Сохранение документов в result: структура папок как в docs, расширение .md."""    @property    def stage_id(self) -> str:        return "result"    def run(self, context: PipelineContext, input_result: object) -> StageResult:        documents: list[MarkdownDocument] = (            input_result if isinstance(input_result, list) else []        )        if context.cancel_event is not None and context.cancel_event.is_set():            return StageResult.ok([])        if not documents:            context.logger.info("Result: документов для сохранения нет")            return StageResult.ok([])        written = self._execute(context, context.config, documents)        context.logger.info("Result: сохранено %s файлов в result", len(written))        return StageResult.ok(written)    def _execute(        self,        context: PipelineContext,        config: Any,        markdown_documents: list[MarkdownDocument],    ) -> list[Path]:        result_dir = config.paths.result        result_dir.mkdir(parents=True, exist_ok=True)        written: list[Path] = []        pl = getattr(config, "pipeline", None)        pipeline_dict = pl if isinstance(pl, dict) else None        with_index = PipelineConfig.create_documents_index_enabled(            pipeline_dict        ) and len(markdown_documents) > 0        total_ops = len(markdown_documents) + (1 if with_index else 0)        def _emit_progress(done: int) -> None:            sink = context.progress_sink            if sink is None or total_ops <= 0:                return            sink(                "result",                {"documents_done": done, "documents_total": total_ops},            )        if total_ops > 0:            _emit_progress(0)        for doc in markdown_documents:            if context.cancel_event is not None and context.cancel_event.is_set():                break            rel_path = result_relative_md_path(doc)            out_path = result_dir / Path(rel_path)            out_path.parent.mkdir(parents=True, exist_ok=True)            content = build_markdown_from_document(doc)            out_path.write_text(normalize_markdown(content), encoding="utf-8")            written.append(out_path)            _emit_progress(len(written))        if with_index and (            context.cancel_event is None or not context.cancel_event.is_set()        ):            index_path = self._write_index_file(result_dir, markdown_documents)            if index_path is not None:                written.append(index_path)                _emit_progress(len(written))        return written    def _write_index_file(        self,        result_dir: Path,        markdown_documents: list[MarkdownDocument],    ) -> Path | None:        if not markdown_documents:            return None        raw = DocumentsIndexFile(markdown_documents).render()        index_path = result_dir / "index.md"        index_path.write_text(normalize_markdown(raw), encoding="utf-8")        return index_path
+"""Этап result: сохранение markdown-документов в каталог result проекта."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from src.modules.markdown.models import MarkdownDocument
+from src.modules.markdown.utils import build_markdown_from_document, normalize_markdown
+from src.modules.project.sections.pipeline_config import PipelineConfig
+from ..base import BasePipelineStage
+from ...models import (
+    PipelineContext,
+    StageResult,
+)
+from .documents_index_file import DocumentsIndexFile, result_relative_md_path
+
+
+class ResultStage(BasePipelineStage):
+    """Сохранение документов в result: структура папок как в docs, расширение .md."""
+
+    @property
+    def stage_id(self) -> str:
+        return "result"
+
+    def run(self, context: PipelineContext, input_result: object) -> StageResult:
+        documents: list[MarkdownDocument] = (
+            input_result if isinstance(input_result, list) else []
+        )
+        if context.cancel_event is not None and context.cancel_event.is_set():
+            return StageResult.ok([])
+        if not documents:
+            context.logger.info("Result: no documents to save")
+            return StageResult.ok([])
+        written = self._execute(context, context.config, documents)
+        context.logger.info("Result: saved %s files to result", len(written))
+        return StageResult.ok(written)
+
+    def _execute(
+        self,
+        context: PipelineContext,
+        config: Any,
+        markdown_documents: list[MarkdownDocument],
+    ) -> list[Path]:
+        result_dir = config.paths.result
+        result_dir.mkdir(parents=True, exist_ok=True)
+        written: list[Path] = []
+        pl = getattr(config, "pipeline", None)
+        pipeline_dict = pl if isinstance(pl, dict) else None
+        with_index = PipelineConfig.create_documents_index_enabled(
+            pipeline_dict
+        ) and len(markdown_documents) > 0
+        total_ops = len(markdown_documents) + (1 if with_index else 0)
+
+        def _emit_progress(done: int) -> None:
+            sink = context.progress_sink
+            if sink is None or total_ops <= 0:
+                return
+            sink(
+                "result",
+                {"documents_done": done, "documents_total": total_ops},
+            )
+
+        if total_ops > 0:
+            _emit_progress(0)
+
+        for doc in markdown_documents:
+            if context.cancel_event is not None and context.cancel_event.is_set():
+                break
+            rel_path = result_relative_md_path(doc)
+            out_path = result_dir / Path(rel_path)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            content = build_markdown_from_document(doc)
+            out_path.write_text(normalize_markdown(content), encoding="utf-8")
+            written.append(out_path)
+            _emit_progress(len(written))
+
+        if with_index and (
+            context.cancel_event is None or not context.cancel_event.is_set()
+        ):
+            index_path = self._write_index_file(result_dir, markdown_documents)
+            if index_path is not None:
+                written.append(index_path)
+                _emit_progress(len(written))
+        return written
+
+    def _write_index_file(
+        self,
+        result_dir: Path,
+        markdown_documents: list[MarkdownDocument],
+    ) -> Path | None:
+        if not markdown_documents:
+            return None
+        raw = DocumentsIndexFile(markdown_documents).render()
+        index_path = result_dir / "index.md"
+        index_path.write_text(normalize_markdown(raw), encoding="utf-8")
+        return index_path

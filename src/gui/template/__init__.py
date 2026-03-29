@@ -1,1 +1,1 @@
-"""UI-шаблон: стили, примитивы (elements), компоненты."""
+"""UI template: styles, primitives (elements), components."""

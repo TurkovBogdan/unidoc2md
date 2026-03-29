@@ -1,4 +1,8 @@
 {
   "app.title": "unidoc2md",
-  "error.project_not_found": "Project not found"
+  "error.project_not_found": "Project not found",
+  "error.project_name_empty": "Project name cannot be empty.",
+  "error.project_already_exists": "A project with this name already exists.",
+  "error.project_delete_path_outside": "Deletion is only allowed for paths inside the projects folder.",
+  "error.project_folder_not_found": "Project folder not found."
 }

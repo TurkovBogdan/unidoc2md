@@ -1,5 +1,6 @@
 {
   "project_execution.window_title": "unidoc2md | Выполнение",
+  "project_execution.console_title": "Обработка данных",
   "project_execution.page_title": "Выполнение проекта",
   "project_execution.title_with_project": "Выполнение: {name}",
   "project_execution.stage.discovery": "Поиск файлов",

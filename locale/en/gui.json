@@ -1,4 +1,5 @@
 {
+  "gui.window_title": "unidoc2md — Project configurator",
   "gui.save": "Save",
   "gui.back": "Back",
   "gui.edit": "Edit",
@@ -24,5 +25,8 @@
   "gui.project.stop": "Stop",
   "gui.project.stop_pending": "Stopping...",
   "gui.project.open_documents": "Open documents",
-  "gui.project.open_results": "Open results"
+  "gui.project.open_results": "Open results",
+  "gui.modal.errors_heading": "Errors:",
+  "gui.modal.confirm_title": "Confirm",
+  "gui.error.open_project_title": "Could not open project"
 }

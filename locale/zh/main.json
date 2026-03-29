@@ -1,4 +1,8 @@
 {
   "app.title": "unidoc2md",
-  "error.project_not_found": "未找到项目"
+  "error.project_not_found": "未找到项目",
+  "error.project_name_empty": "项目名称不能为空。",
+  "error.project_already_exists": "已存在同名项目。",
+  "error.project_delete_path_outside": "仅允许删除位于项目目录内的路径。",
+  "error.project_folder_not_found": "未找到项目文件夹。"
 }

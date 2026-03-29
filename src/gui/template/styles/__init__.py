@@ -1,1 +1,31 @@
-"""Стили: палитра, тема, инициализация виджетов. Импорт: from src.gui.template.styles import PALETTE, gui_setup_theme."""from src.gui.template.styles.theme import *  # noqa: F401, F403from src.gui.template.styles.template import GUITemplatedef gui_setup_theme(root):    """Применяет тему к root. Обёртка над GUITemplate().apply_theme(root)."""    GUITemplate().apply_theme(root)from src.gui.template.styles.buttons import gui_setup_button_stylesfrom src.gui.template.styles.gui import (    APP_WINDOW_DEFAULT_HEIGHT,    APP_WINDOW_DEFAULT_WIDTH,    APP_WINDOW_MIN_HEIGHT,    APP_WINDOW_MIN_WIDTH,    APP_WINDOW_TITLE,)from src.gui.template.styles.inputs import gui_setup_input_styles__all__ = [    "GUITemplate",    "gui_setup_theme",    "gui_setup_button_styles",    "gui_setup_input_styles",    "PALETTE",    "APP_WINDOW_TITLE",    "APP_WINDOW_MIN_WIDTH",    "APP_WINDOW_MIN_HEIGHT",    "APP_WINDOW_DEFAULT_WIDTH",    "APP_WINDOW_DEFAULT_HEIGHT",]
+"""Styles: palette, theme, widget setup. Import: from src.gui.template.styles import PALETTE, gui_setup_theme."""
+
+from src.gui.template.styles.theme import *  # noqa: F401, F403
+from src.gui.template.styles.template import GUITemplate
+
+
+def gui_setup_theme(root):
+    """Apply theme to root. Thin wrapper over GUITemplate().apply_theme(root)."""
+    GUITemplate().apply_theme(root)
+
+
+from src.gui.template.styles.buttons import gui_setup_button_styles
+from src.gui.template.styles.gui import (
+    APP_WINDOW_DEFAULT_HEIGHT,
+    APP_WINDOW_DEFAULT_WIDTH,
+    APP_WINDOW_MIN_HEIGHT,
+    APP_WINDOW_MIN_WIDTH,
+)
+from src.gui.template.styles.inputs import gui_setup_input_styles
+
+__all__ = [
+    "GUITemplate",
+    "gui_setup_theme",
+    "gui_setup_button_styles",
+    "gui_setup_input_styles",
+    "PALETTE",
+    "APP_WINDOW_MIN_WIDTH",
+    "APP_WINDOW_MIN_HEIGHT",
+    "APP_WINDOW_DEFAULT_WIDTH",
+    "APP_WINDOW_DEFAULT_HEIGHT",
+]

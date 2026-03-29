@@ -1,1 +1,27 @@
-"""Входная модель файла для extract-модуля."""from __future__ import annotationsfrom dataclasses import dataclassfrom pathlib import Path@dataclassclass SourceDocument:    """Нормализованное описание входного файла для extract-сервиса."""    path: Path | str    # Path to file's parent relative to docs (POSIX). "" or "." = at root.    folder: str    # Filename without extension.    filename: str    extension: str    mime_type: str | None    file_hash: str | None    def normalized_extension(self) -> str:        ext = (self.extension or "").lower()        return ext if not ext or ext.startswith(".") else f".{ext}"    def path_obj(self) -> Path:        return self.path if isinstance(self.path, Path) else Path(self.path)
+"""Input file model for the extract module."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class SourceDocument:
+    """Normalized input file description for the extract service."""
+
+    path: Path | str
+    # Path to file's parent relative to docs (POSIX). "" or "." = at root.
+    folder: str
+    # Filename without extension.
+    filename: str
+    extension: str
+    mime_type: str | None
+    file_hash: str | None
+
+    def normalized_extension(self) -> str:
+        ext = (self.extension or "").lower()
+        return ext if not ext or ext.startswith(".") else f".{ext}"
+
+    def path_obj(self) -> Path:
+        return self.path if isinstance(self.path, Path) else Path(self.path)

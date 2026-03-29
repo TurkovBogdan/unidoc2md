@@ -1,1 +1,756 @@
-"""Экран настроек приложения (app.ini): табы Приложение / LLM / OCR (подписи из локали)."""from __future__ import annotationsimport reimport tkinter as tkfrom pathlib import Pathfrom tkinter import ttkfrom src.core import AVAILABLE_LANGUAGES, first_available_language_code, locmsgfrom src.gui.adapters import load_app_config_dict, save_app_config_dictfrom src.gui.template.components import (    CustomScrollbar,    ScrollableFrame,    SettingsBlock,    StyledTabView,)from src.gui.template.elements import (    gui_element_button_primary,    gui_element_button_secondary,    gui_element_input_description,    gui_element_input_label,    gui_element_input_select,    gui_element_input_spin,    gui_element_input_text,    gui_element_page_title,    gui_element_separator,)from src.gui.template.elements.classes.gui_input_select import GuiInputSelectfrom src.gui.screens.base_screen import BaseGUIScreenfrom src.gui.template.styles import (    FONT_FAMILY_UI,    GUI_CONTENT_WRAPPER,    GUI_TOPBAR,    PALETTE,    UI_FONT_SIZE,    UI_SETTINGS_BLOCK,    UI_TABS,)LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")GATEWAY_TIMEOUT_MIN, GATEWAY_TIMEOUT_MAX = 1, 600def _application_debug_select_values() -> tuple[str, str]:    return (locmsg("gui.off"), locmsg("gui.on"))def _provider_toggle_values() -> tuple[str, str]:    """Подписи селекта вкл/выкл провайдера (LLM, OCR) — из локали."""    return (locmsg("gui.disabled"), locmsg("gui.enabled"))def _language_codes_ordered() -> tuple[str, ...]:    """Стабильный порядок кодов для селекта языка (не зависит от порядка вставки в dict)."""    return tuple(sorted(AVAILABLE_LANGUAGES.keys()))def _language_select_row_label(code: str) -> str:    """Одна строка в выпадающем списке: код + нативное имя (без двусмысленного сравнения только по имени)."""    return f"{code} — {AVAILABLE_LANGUAGES[code]}"def _settings_language_select_values() -> tuple[str, ...]:    """Значения GuiInputSelect: строки вида «zh — 中文»; variable хранит ту же строку целиком."""    return tuple(_language_select_row_label(c) for c in _language_codes_ordered())def _settings_default_language_code() -> str:    """Первый зарегистрированный язык — запасной, если в конфиге пусто или неизвестный код."""    return first_available_language_code()# Префикс «код» до разделителя (ASCII/Unicode тире), чтобы не терять zh при отличии символа от « — » в исходнике._LANGUAGE_ROW_PREFIX_RE = re.compile(    r"^([a-z][a-z0-9_]*)\s*[-\u2010\u2011\u2012\u2013\u2014\u2015]\s*",    re.IGNORECASE,)def _language_code_from_select_value(s: str) -> str:    """    Код языка из значения селекта (формат «code — name» или устаревшие: только код / только подпись).    """    raw = (s or "").strip()    if not raw:        return _settings_default_language_code()    for code in _language_codes_ordered():        if raw == _language_select_row_label(code):            return code    m = _LANGUAGE_ROW_PREFIX_RE.match(raw)    if m:        head = m.group(1).lower().replace("-", "_")        if head in AVAILABLE_LANGUAGES:            return head    if " — " in raw:        head = raw.split(" — ", 1)[0].strip().lower().replace("-", "_")        if head in AVAILABLE_LANGUAGES:            return head    norm = raw.lower().replace("-", "_")    if norm in AVAILABLE_LANGUAGES:        return norm    for code, name in AVAILABLE_LANGUAGES.items():        if name.strip() == raw:            return code    return _settings_default_language_code()LLM_PROVIDER_SECTIONS = (    ("anthropic", "Anthropic", ("anthropic_api_key",)),    ("google", "Google", ("google_api_key",)),    ("openai", "OpenAI", ("openai_api_key",)),    ("xai", "XAI", ("xai_api_key",)),)def _settings_tab_labels() -> dict[str, str]:    return {        "general": locmsg("settings.tab.application"),        "llm_providers": locmsg("settings.tab.llm_providers"),        "ocr_providers": locmsg("settings.tab.ocr_providers"),    }class SettingsScreen(BaseGUIScreen):    """Настройки приложения: табы из ключей settings.tab.*."""    SCREEN_CODE = "settings"    SCREEN_TITLE = "unidoc2md | Настройки"    def get_screen_title(self) -> str:        return f"unidoc2md | {locmsg('settings.title')}"    SETTINGS_WIDTH_PX = 520    _SEPARATOR_PADX = 12    def __init__(self, parent: ttk.Frame, app_root: Path, on_back, *, app_layout=None, **kwargs) -> None:        super().__init__(parent, app_root=app_root, app_layout=app_layout, **kwargs)        self.app_root = app_root        self.on_back = on_back        self._vars: dict[str, tk.StringVar] = {}        self._provider_key_frames: dict[str, tk.Widget] = {}        self._tab_view: StyledTabView | None = None        self._general_debug_select: GuiInputSelect | None = None        self._general_locale_refs: dict[str, tk.Misc] = {}        self._llm_provider_selects: dict[str, GuiInputSelect] = {}        self._llm_sidebar_refs: dict[str, tk.Misc] = {}        self._ocr_sidebar_refs: dict[str, tk.Misc] = {}        self._ocr_provider_select: GuiInputSelect | None = None        self._llm_form_locale_refs: dict[str, tk.Misc] = {}        self._page_title_label: ttk.Label | None = None        self._build_ui()        self._load_config()    def _build_settings_tab_shell(        self,        parent: tk.Misc,        *,        sidebar_title: str,        article_body: str,        out_refs: dict[str, tk.Misc] | None = None,    ) -> tk.Misc:        """Двухколоночный макет как у вкладок настроек проекта; возвращает контейнер для формы (внутри скролла)."""        padx_tab, pady_tab = UI_TABS["content_padding"]        wrap = ttk.Frame(parent)        wrap.pack(fill=tk.BOTH, expand=True, padx=padx_tab, pady=pady_tab)        left_outer = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])        left_outer.pack_propagate(False)        left_outer.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        scroll = ScrollableFrame(left_outer)        scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        sep.pack_propagate(False)        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        right_frame.columnconfigure(0, weight=1)        right_frame.rowconfigure(1, weight=1)        article_label = ttk.Label(            right_frame, text=sidebar_title, style="RightPanelTitle.TLabel"        )        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])        article_container.grid(row=1, column=0, sticky=tk.NSEW)        article_container.columnconfigure(0, weight=1)        article_container.rowconfigure(0, weight=1)        article_text = tk.Text(            article_container,            wrap=tk.WORD,            state=tk.DISABLED,            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),            bg=PALETTE["bg_surface"],            fg=PALETTE["text_muted"],            insertbackground=PALETTE["text_muted"],            selectbackground=PALETTE["select_bg"],            selectforeground=PALETTE["select_fg"],            relief=tk.FLAT,            bd=0,            highlightthickness=0,        )        article_sb = CustomScrollbar(article_container, command=article_text.yview)        article_text.configure(yscrollcommand=article_sb.set)        article_sb.pack(side=tk.RIGHT, fill=tk.Y)        article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        article_text.configure(state=tk.NORMAL)        article_text.insert(tk.END, article_body)        article_text.configure(state=tk.DISABLED)        if out_refs is not None:            out_refs["sidebar_title"] = article_label            out_refs["article_text"] = article_text        return scroll.content_frame    def _on_llm_provider_enabled_change(self, provider_id: str) -> None:        frame = self._provider_key_frames.get(provider_id)        if not frame:            return        enabled_var = self._vars.get(f"llm_providers.{provider_id}_provider_enabled")        if enabled_var:            if enabled_var.get() == locmsg("gui.enabled"):                frame.grid()            else:                frame.grid_remove()    def _on_yandex_ocr_enabled_change(self) -> None:        frame = self._provider_key_frames.get("yandex_ocr")        if not frame:            return        enabled_var = self._vars.get("yandex_ocr.provider_enabled")        if enabled_var:            if enabled_var.get() == locmsg("gui.enabled"):                frame.grid()            else:                frame.grid_remove()    def _build_ui(self) -> None:        self._top_panel()        ph, pv = GUI_CONTENT_WRAPPER["padding"]        content_wrap = tk.Frame(self, bg=GUI_CONTENT_WRAPPER["background"])        content_wrap.pack(fill=tk.BOTH, expand=True, padx=(ph, ph), pady=(0, pv))        self._page_title_label = gui_element_page_title(content_wrap, locmsg("settings.title"))        tabs_spec = _settings_tab_labels()        tab_view = StyledTabView(            content_wrap,            [                ("general", tabs_spec["general"]),                ("llm_providers", tabs_spec["llm_providers"]),                ("ocr_providers", tabs_spec["ocr_providers"]),            ],            initial="general",        )        self._tab_view = tab_view        tab_view.pack(fill=tk.BOTH, expand=True)        self._build_general_tab(tab_view.content_holder)        self._build_llm_providers_tab(tab_view.content_holder)        self._build_ocr_providers_tab(tab_view.content_holder)        tab_view.add_tab_content("general", self._general_frame)        tab_view.add_tab_content("llm_providers", self._llm_providers_frame)        tab_view.add_tab_content("ocr_providers", self._ocr_providers_frame)    def _build_general_tab(self, parent: ttk.Frame) -> None:        self._general_frame = ttk.Frame(parent)        self._general_locale_refs = {}        form_parent = self._build_settings_tab_shell(            self._general_frame,            sidebar_title=locmsg("gui.notes"),            article_body=locmsg("settings.application.article"),            out_refs=self._general_locale_refs,        )        cfg = UI_SETTINGS_BLOCK        wrap_px = cfg["container_width_px"]        block = SettingsBlock(form_parent)        d_off, d_on = _application_debug_select_values()        lang_row = block.add_field_row_frame()        lang_var = tk.StringVar()        self._vars["core.language_ui"] = lang_var        lang_lbl = gui_element_input_label(            lang_row,            locmsg("settings.application.label.language"),            wraplength=cfg["column_label_px"],        )        block.finish_field_row(            lang_row,            lang_lbl,            gui_element_input_select(                lang_row,                variable=lang_var,                values=_settings_language_select_values(),                width=28,            ),        )        lang_desc = gui_element_input_description(            block.form,            locmsg("settings.application.desc.language"),            wraplength=wrap_px,        )        block.add_comment(lang_desc)        debug_row = block.add_field_row_frame()        debug_var = tk.StringVar(value=d_off)        self._vars["core.debug"] = debug_var        debug_lbl = gui_element_input_label(            debug_row,            locmsg("settings.application.label.debug"),            wraplength=cfg["column_label_px"],        )        self._general_debug_select = gui_element_input_select(            debug_row,            variable=debug_var,            values=(d_off, d_on),            width=20,        )        block.finish_field_row(debug_row, debug_lbl, self._general_debug_select)        debug_desc = gui_element_input_description(            block.form,            locmsg("settings.application.desc.debug"),            wraplength=wrap_px,        )        block.add_comment(debug_desc)        level_row = block.add_field_row_frame()        level_var = tk.StringVar()        self._vars["log.level"] = level_var        log_lbl = gui_element_input_label(            level_row,            locmsg("settings.application.label.log_level"),            wraplength=cfg["column_label_px"],        )        block.finish_field_row(            level_row,            log_lbl,            gui_element_input_select(                level_row, variable=level_var, values=LOG_LEVELS, width=20            ),        )        log_desc = gui_element_input_description(            block.form,            locmsg("settings.application.desc.log_level"),            wraplength=wrap_px,        )        block.add_comment(log_desc)        self._general_locale_refs["label_language"] = lang_lbl        self._general_locale_refs["label_debug"] = debug_lbl        self._general_locale_refs["label_log_level"] = log_lbl        if lang_desc is not None:            self._general_locale_refs["desc_language"] = lang_desc        if debug_desc is not None:            self._general_locale_refs["desc_debug"] = debug_desc        if log_desc is not None:            self._general_locale_refs["desc_log_level"] = log_desc    def _add_llm_provider_block(        self,        block: SettingsBlock,        provider_id: str,        group_name: str,        keys: tuple[str, ...],        *,        add_separator_before: bool = False,    ) -> None:        cfg = UI_SETTINGS_BLOCK        if add_separator_before:            block.add_full_width_row(gui_element_separator(block.form))        prov_off, prov_on = _provider_toggle_values()        enabled_var = tk.StringVar(value=prov_off)        self._vars[f"llm_providers.{provider_id}_provider_enabled"] = enabled_var        status_row = block.add_field_row_frame()        prov_sel = gui_element_input_select(            status_row,            variable=enabled_var,            values=(prov_off, prov_on),            width=20,        )        self._llm_provider_selects[provider_id] = prov_sel        block.finish_field_row(            status_row,            gui_element_input_label(                status_row, group_name, wraplength=cfg["column_label_px"]            ),            prov_sel,        )        sub, sub_frame, _row = block.begin_sub_block()        self._provider_key_frames[provider_id] = sub_frame        enabled_var.trace_add(            "write",            lambda *_p, pid=provider_id: self._on_llm_provider_enabled_change(pid),        )        for key in keys:            key_row = sub.add_field_row_frame()            var = tk.StringVar()            self._vars[f"llm_providers.{key}"] = var            lw = gui_element_input_label(                key_row, "API KEY", wraplength=cfg["column_label_px"]            )            entry = gui_element_input_text(                key_row, textvariable=var, width=28            )            sub.finish_field_row(key_row, lw, entry)    def _build_llm_providers_tab(self, parent: ttk.Frame) -> None:        self._llm_providers_frame = ttk.Frame(parent)        self._llm_sidebar_refs = {}        self._llm_form_locale_refs.clear()        self._llm_provider_selects.clear()        form_parent = self._build_settings_tab_shell(            self._llm_providers_frame,            sidebar_title=locmsg("gui.notes"),            article_body=locmsg("settings.llm.article"),            out_refs=self._llm_sidebar_refs,        )        cfg = UI_SETTINGS_BLOCK        wrap_px = cfg["container_width_px"]        block = SettingsBlock(form_parent)        gw_row = block.add_field_row_frame()        gateway_var = tk.StringVar(value="30")        self._vars["llm_providers.gateway_timeout"] = gateway_var        gw_lbl = gui_element_input_label(            gw_row,            locmsg("settings.llm.label.gateway_timeout"),            wraplength=cfg["column_label_px"],        )        block.finish_field_row(            gw_row,            gw_lbl,            gui_element_input_spin(                gw_row,                textvariable=gateway_var,                from_=GATEWAY_TIMEOUT_MIN,                to=GATEWAY_TIMEOUT_MAX,                width=6,            ),        )        gw_desc = gui_element_input_description(            block.form,            locmsg("settings.llm.desc.gateway_timeout"),            wraplength=wrap_px,        )        block.add_comment(gw_desc)        self._llm_form_locale_refs["label_gateway_timeout"] = gw_lbl        if gw_desc is not None:            self._llm_form_locale_refs["desc_gateway_timeout"] = gw_desc        block.add_full_width_row(gui_element_separator(block.form))        for idx, (pid, title, keys) in enumerate(LLM_PROVIDER_SECTIONS):            self._add_llm_provider_block(                block, pid, title, keys, add_separator_before=idx > 0            )    def _build_ocr_providers_tab(self, parent: ttk.Frame) -> None:        self._ocr_providers_frame = ttk.Frame(parent)        self._ocr_sidebar_refs = {}        form_parent = self._build_settings_tab_shell(            self._ocr_providers_frame,            sidebar_title=locmsg("gui.notes"),            article_body=locmsg("settings.ocr.article"),            out_refs=self._ocr_sidebar_refs,        )        cfg = UI_SETTINGS_BLOCK        wrap_px = cfg["container_width_px"]        block = SettingsBlock(form_parent)        yo_off, yo_on = _provider_toggle_values()        enabled_var = tk.StringVar(value=yo_off)        self._vars["yandex_ocr.provider_enabled"] = enabled_var        yo_status_row = block.add_field_row_frame()        self._ocr_provider_select = gui_element_input_select(            yo_status_row,            variable=enabled_var,            values=(yo_off, yo_on),            width=20,        )        block.finish_field_row(            yo_status_row,            gui_element_input_label(                yo_status_row, "Yandex OCR", wraplength=cfg["column_label_px"]            ),            self._ocr_provider_select,        )        sub, sub_frame, _row = block.begin_sub_block()        self._provider_key_frames["yandex_ocr"] = sub_frame        enabled_var.trace_add("write", lambda *_: self._on_yandex_ocr_enabled_change())        for key in ("key_id", "key_secret"):            disp = "Key ID" if key == "key_id" else "Key Secret"            row = sub.add_field_row_frame()            var = tk.StringVar()            self._vars[f"yandex_ocr.{key}"] = var            lw = gui_element_input_label(                row, f"{disp}:", wraplength=cfg["column_label_px"]            )            entry = gui_element_input_text(row, textvariable=var, width=28)            sub.finish_field_row(row, lw, entry)    def _top_panel(self) -> None:        """«Назад» слева, «Сохранить» справа — как на экране деталки модели."""        ph, pv = GUI_TOPBAR["padding"]        gh, _gv = GUI_TOPBAR["gap"]        bg = GUI_TOPBAR["background"]        top_bar = tk.Frame(self, bg=bg)        top_bar.pack(fill=tk.X, pady=(0, pv))        left_frame = tk.Frame(top_bar, bg=bg)        left_frame.pack(side=tk.LEFT, padx=(ph, 0), pady=pv)        self._topbar_btn_back = gui_element_button_secondary(            left_frame, locmsg("gui.back"), self._go_back        )        self._topbar_btn_back.pack(side=tk.LEFT)        right_frame = tk.Frame(top_bar, bg=bg)        right_frame.pack(side=tk.RIGHT, padx=(0, ph), pady=pv)        self._topbar_btn_save = gui_element_button_primary(            right_frame, locmsg("gui.save"), self._save        )        self._topbar_btn_save.pack(side=tk.LEFT, padx=(gh, 0))    def _load_config(self) -> None:        data = load_app_config_dict()        lp = data.get("llm_providers") or {}        yo = data.get("yandex_ocr") or {}        core = data.get("core") or {}        prov_off, prov_on = _provider_toggle_values()        for key, var in self._vars.items():            if key.startswith("llm_providers."):                field = key.split(".", 1)[1]                if field.endswith("_provider_enabled"):                    var.set(prov_on if lp.get(field, False) else prov_off)                elif field == "gateway_timeout":                    var.set(str(lp.get(field, 30)))                else:                    var.set(lp.get(field, ""))            elif key.startswith("yandex_ocr."):                field = key.split(".", 1)[1]                if field == "provider_enabled":                    var.set(prov_on if yo.get(field, False) else prov_off)                else:                    var.set(yo.get(field, ""))            elif key == "core.debug":                off, on = _application_debug_select_values()                var.set(on if core.get("debug", False) else off)            elif key == "log.level":                var.set(core.get("log_level", "DEBUG"))            elif key == "core.language_ui":                code = (core.get("language") or "").strip().lower().replace("-", "_")                if code and code in AVAILABLE_LANGUAGES:                    var.set(_language_select_row_label(code))                else:                    var.set(_language_select_row_label(_settings_default_language_code()))        for provider_id, _, _ in LLM_PROVIDER_SECTIONS:            self._on_llm_provider_enabled_change(provider_id)        self._on_yandex_ocr_enabled_change()    def _get_form_data(self) -> dict:        lp = {}        yo = {}        for key, var in self._vars.items():            if key.startswith("llm_providers."):                field = key.split(".", 1)[1]                if field.endswith("_provider_enabled"):                    lp[field] = var.get() == locmsg("gui.enabled")                elif field == "gateway_timeout":                    try:                        val = int(var.get() if isinstance(var, tk.StringVar) else 30)                    except (TypeError, ValueError):                        val = 30                    lp[field] = max(GATEWAY_TIMEOUT_MIN, min(GATEWAY_TIMEOUT_MAX, val))                else:                    lp[field] = var.get()            elif key.startswith("yandex_ocr."):                field = key.split(".", 1)[1]                if field == "provider_enabled":                    yo[field] = var.get() == locmsg("gui.enabled")                else:                    yo[field] = var.get()        core_debug = self._vars.get("core.debug")        log_level = self._vars.get("log.level")        lang_ui = self._vars.get("core.language_ui")        language_code = _settings_default_language_code()        if isinstance(lang_ui, tk.StringVar):            language_code = _language_code_from_select_value(lang_ui.get())        debug_on_label = locmsg("gui.on")        return {            "core": {                "debug": (core_debug.get() == debug_on_label) if core_debug else False,                "log_level": (log_level.get() or "DEBUG").strip()                if isinstance(log_level, tk.StringVar)                else "DEBUG",                "console_log_level": "INFO",                "language": language_code,            },            "llm_providers": lp,            "yandex_ocr": yo,        }    def _refresh_general_tab_locale(self) -> None:        """Подписи и боковая статья вкладки «Приложение» после смены языка."""        refs = self._general_locale_refs        st = refs.get("sidebar_title")        if st is not None:            st.configure(text=locmsg("gui.notes"))        at = refs.get("article_text")        if at is not None and isinstance(at, tk.Text):            at.configure(state=tk.NORMAL)            at.delete("1.0", tk.END)            at.insert(tk.END, locmsg("settings.application.article"))            at.configure(state=tk.DISABLED)        lbl = refs.get("label_language")        if lbl is not None:            lbl.configure(text=locmsg("settings.application.label.language"))        lbl = refs.get("label_debug")        if lbl is not None:            lbl.configure(text=locmsg("settings.application.label.debug"))        lbl = refs.get("label_log_level")        if lbl is not None:            lbl.configure(text=locmsg("settings.application.label.log_level"))        for key, msg_key in (            ("desc_language", "settings.application.desc.language"),            ("desc_debug", "settings.application.desc.debug"),            ("desc_log_level", "settings.application.desc.log_level"),        ):            w = refs.get(key)            if w is not None:                w.configure(text=locmsg(msg_key))        d_off, d_on = _application_debug_select_values()        if self._general_debug_select is not None:            data = load_app_config_dict()            core = data.get("core") or {}            self._general_debug_select.set_values((d_off, d_on))            dbg = self._vars.get("core.debug")            if isinstance(dbg, tk.StringVar):                dbg.set(d_on if core.get("debug", False) else d_off)    def _refresh_llm_ocr_sidebar_locale(self) -> None:        """Боковые пояснения и селекты вкл/выкл провайдеров после смены языка."""        p_off, p_on = _provider_toggle_values()        data = load_app_config_dict()        lp = data.get("llm_providers") or {}        yo = data.get("yandex_ocr") or {}        for refs, article_key in (            (self._llm_sidebar_refs, "settings.llm.article"),            (self._ocr_sidebar_refs, "settings.ocr.article"),        ):            st = refs.get("sidebar_title")            if st is not None:                st.configure(text=locmsg("gui.notes"))            at = refs.get("article_text")            if at is not None and isinstance(at, tk.Text):                at.configure(state=tk.NORMAL)                at.delete("1.0", tk.END)                at.insert(tk.END, locmsg(article_key))                at.configure(state=tk.DISABLED)        gw_lbl = self._llm_form_locale_refs.get("label_gateway_timeout")        if gw_lbl is not None:            gw_lbl.configure(text=locmsg("settings.llm.label.gateway_timeout"))        gw_desc = self._llm_form_locale_refs.get("desc_gateway_timeout")        if gw_desc is not None:            gw_desc.configure(text=locmsg("settings.llm.desc.gateway_timeout"))        for pid, sel in self._llm_provider_selects.items():            sel.set_values((p_off, p_on))            var = self._vars.get(f"llm_providers.{pid}_provider_enabled")            if isinstance(var, tk.StringVar):                var.set(                    p_on if lp.get(f"{pid}_provider_enabled", False) else p_off                )            self._on_llm_provider_enabled_change(pid)        if self._ocr_provider_select is not None:            self._ocr_provider_select.set_values((p_off, p_on))            yo_var = self._vars.get("yandex_ocr.provider_enabled")            if isinstance(yo_var, tk.StringVar):                yo_var.set(                    p_on if yo.get("provider_enabled", False) else p_off                )            self._on_yandex_ocr_enabled_change()    def _refresh_topbar_action_labels(self) -> None:        """После смены языка в конфиге `save_app_config_dict` вызывает `set_language`; обновить подписи кнопок и табов."""        self._topbar_btn_back.configure(text=locmsg("gui.back"))        self._topbar_btn_save.configure(text=locmsg("gui.save"))        if self._page_title_label is not None:            self._page_title_label.configure(text=locmsg("settings.title"))        try:            self.winfo_toplevel().title(self.get_screen_title())        except tk.TclError:            pass        if self._tab_view is not None:            self._tab_view.update_tab_labels(_settings_tab_labels())        self._refresh_general_tab_locale()        self._refresh_llm_ocr_sidebar_locale()    def refresh_locale(self) -> None:        """После set_language извне (loader, другой экран) — обновить подписи этого экрана."""        self._refresh_topbar_action_labels()    def _save(self) -> None:        data = self._get_form_data()        save_app_config_dict(data, app_root=self.app_root)        self._refresh_topbar_action_labels()        try:            from src.gui.gui_controller import GUIController            GUIController.get().notify_locale_changed()        except Exception:            pass        if self._app_layout:            self._app_layout.modals.show_info(                locmsg("settings.save_modal.title"),                locmsg("settings.save_modal.message"),            )    def _go_back(self) -> None:        if self.on_back:            self.on_back()
+"""Application settings screen (app.ini): Application / LLM / OCR tabs (labels from locale)."""
+
+from __future__ import annotations
+
+import re
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+
+from src.core import AVAILABLE_LANGUAGES, first_available_language_code, locmsg
+from src.gui.adapters import load_app_config_dict, save_app_config_dict
+from src.gui.template.components import (
+    CustomScrollbar,
+    ScrollableFrame,
+    SettingsBlock,
+    StyledTabView,
+)
+from src.gui.template.elements import (
+    gui_element_button_primary,
+    gui_element_button_secondary,
+    gui_element_input_description,
+    gui_element_input_label,
+    gui_element_input_select,
+    gui_element_input_spin,
+    gui_element_input_text,
+    gui_element_page_title,
+    gui_element_separator,
+)
+from src.gui.template.elements.classes.gui_input_select import GuiInputSelect
+from src.gui.screens.base_screen import BaseGUIScreen
+from src.gui.template.styles import (
+    FONT_FAMILY_UI,
+    GUI_CONTENT_WRAPPER,
+    GUI_TOPBAR,
+    PALETTE,
+    UI_FONT_SIZE,
+    UI_SETTINGS_BLOCK,
+    UI_TABS,
+)
+
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+GATEWAY_TIMEOUT_MIN, GATEWAY_TIMEOUT_MAX = 1, 600
+
+def _application_debug_select_values() -> tuple[str, str]:
+    return (locmsg("gui.off"), locmsg("gui.on"))
+
+
+def _provider_toggle_values() -> tuple[str, str]:
+    """Enabled/disabled labels for LLM and OCR provider rows (localized)."""
+    return (locmsg("gui.disabled"), locmsg("gui.enabled"))
+
+
+def _language_codes_ordered() -> tuple[str, ...]:
+    """Stable ordering for the language select (independent of dict iteration order)."""
+    return tuple(sorted(AVAILABLE_LANGUAGES.keys()))
+
+
+def _language_select_row_label(code: str) -> str:
+    """One dropdown row: code plus native name (avoids ambiguous name-only matching)."""
+    return f"{code} — {AVAILABLE_LANGUAGES[code]}"
+
+
+def _settings_language_select_values() -> tuple[str, ...]:
+    """GuiInputSelect values like ``zh — 中文``; the variable stores the full row string."""
+    return tuple(_language_select_row_label(c) for c in _language_codes_ordered())
+
+
+def _settings_default_language_code() -> str:
+    """Fallback when config is empty or holds an unknown code."""
+    return first_available_language_code()
+
+
+# Code prefix before the dash separator (ASCII/Unicode), so ``zh`` is not lost if the dash glyph differs.
+_LANGUAGE_ROW_PREFIX_RE = re.compile(
+    r"^([a-z][a-z0-9_]*)\s*[-\u2010\u2011\u2012\u2013\u2014\u2015]\s*",
+    re.IGNORECASE,
+)
+
+
+def _language_code_from_select_value(s: str) -> str:
+    """Parse language code from select value (``code — name`` or legacy code-only / name-only)."""
+    raw = (s or "").strip()
+    if not raw:
+        return _settings_default_language_code()
+    for code in _language_codes_ordered():
+        if raw == _language_select_row_label(code):
+            return code
+    m = _LANGUAGE_ROW_PREFIX_RE.match(raw)
+    if m:
+        head = m.group(1).lower().replace("-", "_")
+        if head in AVAILABLE_LANGUAGES:
+            return head
+    if " — " in raw:
+        head = raw.split(" — ", 1)[0].strip().lower().replace("-", "_")
+        if head in AVAILABLE_LANGUAGES:
+            return head
+    norm = raw.lower().replace("-", "_")
+    if norm in AVAILABLE_LANGUAGES:
+        return norm
+    for code, name in AVAILABLE_LANGUAGES.items():
+        if name.strip() == raw:
+            return code
+    return _settings_default_language_code()
+
+LLM_PROVIDER_SECTIONS = (
+    ("anthropic", "Anthropic", ("anthropic_api_key",)),
+    ("google", "Google", ("google_api_key",)),
+    ("openai", "OpenAI", ("openai_api_key",)),
+    ("xai", "XAI", ("xai_api_key",)),
+)
+
+
+def _settings_tab_labels() -> dict[str, str]:
+    return {
+        "general": locmsg("settings.tab.application"),
+        "llm_providers": locmsg("settings.tab.llm_providers"),
+        "ocr_providers": locmsg("settings.tab.ocr_providers"),
+    }
+
+
+class SettingsScreen(BaseGUIScreen):
+    """Application settings; tab titles use settings.tab.* keys."""
+
+    SCREEN_CODE = "settings"
+
+    def get_screen_title(self) -> str:
+        return f"unidoc2md | {locmsg('settings.title')}"
+
+    SETTINGS_WIDTH_PX = 520
+    _SEPARATOR_PADX = 12
+
+    def __init__(self, parent: ttk.Frame, app_root: Path, on_back, *, app_layout=None, **kwargs) -> None:
+        super().__init__(parent, app_root=app_root, app_layout=app_layout, **kwargs)
+        self.app_root = app_root
+        self.on_back = on_back
+        self._vars: dict[str, tk.StringVar] = {}
+        self._provider_key_frames: dict[str, tk.Widget] = {}
+        self._tab_view: StyledTabView | None = None
+        self._general_debug_select: GuiInputSelect | None = None
+        self._general_locale_refs: dict[str, tk.Misc] = {}
+        self._llm_provider_selects: dict[str, GuiInputSelect] = {}
+        self._llm_sidebar_refs: dict[str, tk.Misc] = {}
+        self._ocr_sidebar_refs: dict[str, tk.Misc] = {}
+        self._ocr_provider_select: GuiInputSelect | None = None
+        self._llm_form_locale_refs: dict[str, tk.Misc] = {}
+        self._llm_api_key_labels: list[tk.Misc] = []
+        self._ocr_form_locale_refs: dict[str, tk.Misc] = {}
+        self._page_title_label: ttk.Label | None = None
+        self._build_ui()
+        self._load_config()
+
+    def _build_settings_tab_shell(
+        self,
+        parent: tk.Misc,
+        *,
+        sidebar_title: str,
+        article_body: str,
+        out_refs: dict[str, tk.Misc] | None = None,
+    ) -> tk.Misc:
+        """Two-column shell like project settings tabs; returns the form container inside the scroll area."""
+        padx_tab, pady_tab = UI_TABS["content_padding"]
+        wrap = ttk.Frame(parent)
+        wrap.pack(fill=tk.BOTH, expand=True, padx=padx_tab, pady=pady_tab)
+
+        left_outer = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])
+        left_outer.pack_propagate(False)
+        left_outer.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+
+        scroll = ScrollableFrame(left_outer)
+        scroll.pack(fill=tk.BOTH, expand=True, padx=(0, self._SEPARATOR_PADX))
+
+        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)
+        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        sep.pack_propagate(False)
+
+        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+
+        article_label = ttk.Label(
+            right_frame, text=sidebar_title, style="RightPanelTitle.TLabel"
+        )
+        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+
+        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
+        article_container.grid(row=1, column=0, sticky=tk.NSEW)
+        article_container.columnconfigure(0, weight=1)
+        article_container.rowconfigure(0, weight=1)
+
+        article_text = tk.Text(
+            article_container,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
+            bg=PALETTE["bg_surface"],
+            fg=PALETTE["text_muted"],
+            insertbackground=PALETTE["text_muted"],
+            selectbackground=PALETTE["select_bg"],
+            selectforeground=PALETTE["select_fg"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+        )
+        article_sb = CustomScrollbar(article_container, command=article_text.yview)
+        article_text.configure(yscrollcommand=article_sb.set)
+        article_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        article_text.configure(state=tk.NORMAL)
+        article_text.insert(tk.END, article_body)
+        article_text.configure(state=tk.DISABLED)
+
+        if out_refs is not None:
+            out_refs["sidebar_title"] = article_label
+            out_refs["article_text"] = article_text
+
+        return scroll.content_frame
+
+    def _on_llm_provider_enabled_change(self, provider_id: str) -> None:
+        frame = self._provider_key_frames.get(provider_id)
+        if not frame:
+            return
+        enabled_var = self._vars.get(f"llm_providers.{provider_id}_provider_enabled")
+        if enabled_var:
+            if enabled_var.get() == locmsg("gui.enabled"):
+                frame.grid()
+            else:
+                frame.grid_remove()
+
+    def _on_yandex_ocr_enabled_change(self) -> None:
+        frame = self._provider_key_frames.get("yandex_ocr")
+        if not frame:
+            return
+        enabled_var = self._vars.get("yandex_ocr.provider_enabled")
+        if enabled_var:
+            if enabled_var.get() == locmsg("gui.enabled"):
+                frame.grid()
+            else:
+                frame.grid_remove()
+
+    def _build_ui(self) -> None:
+        self._top_panel()
+
+        ph, pv = GUI_CONTENT_WRAPPER["padding"]
+        content_wrap = tk.Frame(self, bg=GUI_CONTENT_WRAPPER["background"])
+        content_wrap.pack(fill=tk.BOTH, expand=True, padx=(ph, ph), pady=(0, pv))
+
+        self._page_title_label = gui_element_page_title(content_wrap, locmsg("settings.title"))
+
+        tabs_spec = _settings_tab_labels()
+        tab_view = StyledTabView(
+            content_wrap,
+            [
+                ("general", tabs_spec["general"]),
+                ("llm_providers", tabs_spec["llm_providers"]),
+                ("ocr_providers", tabs_spec["ocr_providers"]),
+            ],
+            initial="general",
+        )
+        self._tab_view = tab_view
+        tab_view.pack(fill=tk.BOTH, expand=True)
+
+        self._build_general_tab(tab_view.content_holder)
+        self._build_llm_providers_tab(tab_view.content_holder)
+        self._build_ocr_providers_tab(tab_view.content_holder)
+
+        tab_view.add_tab_content("general", self._general_frame)
+        tab_view.add_tab_content("llm_providers", self._llm_providers_frame)
+        tab_view.add_tab_content("ocr_providers", self._ocr_providers_frame)
+
+    def _build_general_tab(self, parent: ttk.Frame) -> None:
+        self._general_frame = ttk.Frame(parent)
+        self._general_locale_refs = {}
+        form_parent = self._build_settings_tab_shell(
+            self._general_frame,
+            sidebar_title=locmsg("gui.notes"),
+            article_body=locmsg("settings.application.article"),
+            out_refs=self._general_locale_refs,
+        )
+        cfg = UI_SETTINGS_BLOCK
+        wrap_px = cfg["container_width_px"]
+        block = SettingsBlock(form_parent)
+
+        d_off, d_on = _application_debug_select_values()
+
+        lang_row = block.add_field_row_frame()
+        lang_var = tk.StringVar()
+        self._vars["core.language_ui"] = lang_var
+        lang_lbl = gui_element_input_label(
+            lang_row,
+            locmsg("settings.application.label.language"),
+            wraplength=cfg["column_label_px"],
+        )
+        block.finish_field_row(
+            lang_row,
+            lang_lbl,
+            gui_element_input_select(
+                lang_row,
+                variable=lang_var,
+                values=_settings_language_select_values(),
+                width=28,
+            ),
+        )
+        lang_desc = gui_element_input_description(
+            block.form,
+            locmsg("settings.application.desc.language"),
+            wraplength=wrap_px,
+        )
+        block.add_comment(lang_desc)
+
+        debug_row = block.add_field_row_frame()
+        debug_var = tk.StringVar(value=d_off)
+        self._vars["core.debug"] = debug_var
+        debug_lbl = gui_element_input_label(
+            debug_row,
+            locmsg("settings.application.label.debug"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._general_debug_select = gui_element_input_select(
+            debug_row,
+            variable=debug_var,
+            values=(d_off, d_on),
+            width=20,
+        )
+        block.finish_field_row(debug_row, debug_lbl, self._general_debug_select)
+        debug_desc = gui_element_input_description(
+            block.form,
+            locmsg("settings.application.desc.debug"),
+            wraplength=wrap_px,
+        )
+        block.add_comment(debug_desc)
+
+        level_row = block.add_field_row_frame()
+        level_var = tk.StringVar()
+        self._vars["log.level"] = level_var
+        log_lbl = gui_element_input_label(
+            level_row,
+            locmsg("settings.application.label.log_level"),
+            wraplength=cfg["column_label_px"],
+        )
+        block.finish_field_row(
+            level_row,
+            log_lbl,
+            gui_element_input_select(
+                level_row, variable=level_var, values=LOG_LEVELS, width=20
+            ),
+        )
+        log_desc = gui_element_input_description(
+            block.form,
+            locmsg("settings.application.desc.log_level"),
+            wraplength=wrap_px,
+        )
+        block.add_comment(log_desc)
+
+        self._general_locale_refs["label_language"] = lang_lbl
+        self._general_locale_refs["label_debug"] = debug_lbl
+        self._general_locale_refs["label_log_level"] = log_lbl
+        if lang_desc is not None:
+            self._general_locale_refs["desc_language"] = lang_desc
+        if debug_desc is not None:
+            self._general_locale_refs["desc_debug"] = debug_desc
+        if log_desc is not None:
+            self._general_locale_refs["desc_log_level"] = log_desc
+
+    def _add_llm_provider_block(
+        self,
+        block: SettingsBlock,
+        provider_id: str,
+        group_name: str,
+        keys: tuple[str, ...],
+        *,
+        add_separator_before: bool = False,
+    ) -> None:
+        cfg = UI_SETTINGS_BLOCK
+        if add_separator_before:
+            block.add_full_width_row(gui_element_separator(block.form))
+
+        prov_off, prov_on = _provider_toggle_values()
+        enabled_var = tk.StringVar(value=prov_off)
+        self._vars[f"llm_providers.{provider_id}_provider_enabled"] = enabled_var
+
+        status_row = block.add_field_row_frame()
+        prov_sel = gui_element_input_select(
+            status_row,
+            variable=enabled_var,
+            values=(prov_off, prov_on),
+            width=20,
+        )
+        self._llm_provider_selects[provider_id] = prov_sel
+        block.finish_field_row(
+            status_row,
+            gui_element_input_label(
+                status_row, group_name, wraplength=cfg["column_label_px"]
+            ),
+            prov_sel,
+        )
+
+        sub, sub_frame, _row = block.begin_sub_block()
+        self._provider_key_frames[provider_id] = sub_frame
+        enabled_var.trace_add(
+            "write",
+            lambda *_p, pid=provider_id: self._on_llm_provider_enabled_change(pid),
+        )
+        for key in keys:
+            key_row = sub.add_field_row_frame()
+            var = tk.StringVar()
+            self._vars[f"llm_providers.{key}"] = var
+            lw = gui_element_input_label(
+                key_row, locmsg("settings.llm.label.api_key"), wraplength=cfg["column_label_px"]
+            )
+            self._llm_api_key_labels.append(lw)
+            entry = gui_element_input_text(
+                key_row, textvariable=var, width=28
+            )
+            sub.finish_field_row(key_row, lw, entry)
+
+    def _build_llm_providers_tab(self, parent: ttk.Frame) -> None:
+        self._llm_providers_frame = ttk.Frame(parent)
+        self._llm_sidebar_refs = {}
+        self._llm_form_locale_refs.clear()
+        self._llm_provider_selects.clear()
+        self._llm_api_key_labels.clear()
+        form_parent = self._build_settings_tab_shell(
+            self._llm_providers_frame,
+            sidebar_title=locmsg("gui.notes"),
+            article_body=locmsg("settings.llm.article"),
+            out_refs=self._llm_sidebar_refs,
+        )
+        cfg = UI_SETTINGS_BLOCK
+        wrap_px = cfg["container_width_px"]
+        block = SettingsBlock(form_parent)
+
+        gw_row = block.add_field_row_frame()
+        gateway_var = tk.StringVar(value="30")
+        self._vars["llm_providers.gateway_timeout"] = gateway_var
+        gw_lbl = gui_element_input_label(
+            gw_row,
+            locmsg("settings.llm.label.gateway_timeout"),
+            wraplength=cfg["column_label_px"],
+        )
+        block.finish_field_row(
+            gw_row,
+            gw_lbl,
+            gui_element_input_spin(
+                gw_row,
+                textvariable=gateway_var,
+                from_=GATEWAY_TIMEOUT_MIN,
+                to=GATEWAY_TIMEOUT_MAX,
+                width=6,
+            ),
+        )
+        gw_desc = gui_element_input_description(
+            block.form,
+            locmsg("settings.llm.desc.gateway_timeout"),
+            wraplength=wrap_px,
+        )
+        block.add_comment(gw_desc)
+        self._llm_form_locale_refs["label_gateway_timeout"] = gw_lbl
+        if gw_desc is not None:
+            self._llm_form_locale_refs["desc_gateway_timeout"] = gw_desc
+        block.add_full_width_row(gui_element_separator(block.form))
+
+        for idx, (pid, title, keys) in enumerate(LLM_PROVIDER_SECTIONS):
+            self._add_llm_provider_block(
+                block, pid, title, keys, add_separator_before=idx > 0
+            )
+
+    def _build_ocr_providers_tab(self, parent: ttk.Frame) -> None:
+        self._ocr_providers_frame = ttk.Frame(parent)
+        self._ocr_sidebar_refs = {}
+        self._ocr_form_locale_refs.clear()
+        form_parent = self._build_settings_tab_shell(
+            self._ocr_providers_frame,
+            sidebar_title=locmsg("gui.notes"),
+            article_body=locmsg("settings.ocr.article"),
+            out_refs=self._ocr_sidebar_refs,
+        )
+        cfg = UI_SETTINGS_BLOCK
+        wrap_px = cfg["container_width_px"]
+        block = SettingsBlock(form_parent)
+
+        yo_off, yo_on = _provider_toggle_values()
+        enabled_var = tk.StringVar(value=yo_off)
+        self._vars["yandex_ocr.provider_enabled"] = enabled_var
+        yo_status_row = block.add_field_row_frame()
+        self._ocr_provider_select = gui_element_input_select(
+            yo_status_row,
+            variable=enabled_var,
+            values=(yo_off, yo_on),
+            width=20,
+        )
+        yo_row_lbl = gui_element_input_label(
+            yo_status_row,
+            locmsg("settings.ocr.label.yandex_ocr"),
+            wraplength=cfg["column_label_px"],
+        )
+        self._ocr_form_locale_refs["label_yandex_row"] = yo_row_lbl
+        block.finish_field_row(
+            yo_status_row,
+            yo_row_lbl,
+            self._ocr_provider_select,
+        )
+
+        sub, sub_frame, _row = block.begin_sub_block()
+        self._provider_key_frames["yandex_ocr"] = sub_frame
+        enabled_var.trace_add("write", lambda *_: self._on_yandex_ocr_enabled_change())
+        for key, msg_key in (
+            ("key_id", "settings.ocr.label.key_id"),
+            ("key_secret", "settings.ocr.label.key_secret"),
+        ):
+            row = sub.add_field_row_frame()
+            var = tk.StringVar()
+            self._vars[f"yandex_ocr.{key}"] = var
+            lw = gui_element_input_label(
+                row, f"{locmsg(msg_key)}:", wraplength=cfg["column_label_px"]
+            )
+            self._ocr_form_locale_refs[f"label_{key}"] = lw
+            entry = gui_element_input_text(row, textvariable=var, width=28)
+            sub.finish_field_row(row, lw, entry)
+
+    def _top_panel(self) -> None:
+        """Back left, save right (same pattern as model detail screen)."""
+        ph, pv = GUI_TOPBAR["padding"]
+        gh, _gv = GUI_TOPBAR["gap"]
+        bg = GUI_TOPBAR["background"]
+        top_bar = tk.Frame(self, bg=bg)
+        top_bar.pack(fill=tk.X, pady=(0, pv))
+        left_frame = tk.Frame(top_bar, bg=bg)
+        left_frame.pack(side=tk.LEFT, padx=(ph, 0), pady=pv)
+        self._topbar_btn_back = gui_element_button_secondary(
+            left_frame, locmsg("gui.back"), self._go_back
+        )
+        self._topbar_btn_back.pack(side=tk.LEFT)
+        right_frame = tk.Frame(top_bar, bg=bg)
+        right_frame.pack(side=tk.RIGHT, padx=(0, ph), pady=pv)
+        self._topbar_btn_save = gui_element_button_primary(
+            right_frame, locmsg("gui.save"), self._save
+        )
+        self._topbar_btn_save.pack(side=tk.LEFT, padx=(gh, 0))
+
+    def _load_config(self) -> None:
+        data = load_app_config_dict()
+        lp = data.get("llm_providers") or {}
+        yo = data.get("yandex_ocr") or {}
+        core = data.get("core") or {}
+        prov_off, prov_on = _provider_toggle_values()
+        for key, var in self._vars.items():
+            if key.startswith("llm_providers."):
+                field = key.split(".", 1)[1]
+                if field.endswith("_provider_enabled"):
+                    var.set(prov_on if lp.get(field, False) else prov_off)
+                elif field == "gateway_timeout":
+                    var.set(str(lp.get(field, 30)))
+                else:
+                    var.set(lp.get(field, ""))
+            elif key.startswith("yandex_ocr."):
+                field = key.split(".", 1)[1]
+                if field == "provider_enabled":
+                    var.set(prov_on if yo.get(field, False) else prov_off)
+                else:
+                    var.set(yo.get(field, ""))
+            elif key == "core.debug":
+                off, on = _application_debug_select_values()
+                var.set(on if core.get("debug", False) else off)
+            elif key == "log.level":
+                var.set(core.get("log_level", "DEBUG"))
+            elif key == "core.language_ui":
+                code = (core.get("language") or "").strip().lower().replace("-", "_")
+                if code and code in AVAILABLE_LANGUAGES:
+                    var.set(_language_select_row_label(code))
+                else:
+                    var.set(_language_select_row_label(_settings_default_language_code()))
+        for provider_id, _, _ in LLM_PROVIDER_SECTIONS:
+            self._on_llm_provider_enabled_change(provider_id)
+        self._on_yandex_ocr_enabled_change()
+
+    def _get_form_data(self) -> dict:
+        lp = {}
+        yo = {}
+        for key, var in self._vars.items():
+            if key.startswith("llm_providers."):
+                field = key.split(".", 1)[1]
+                if field.endswith("_provider_enabled"):
+                    lp[field] = var.get() == locmsg("gui.enabled")
+                elif field == "gateway_timeout":
+                    try:
+                        val = int(var.get() if isinstance(var, tk.StringVar) else 30)
+                    except (TypeError, ValueError):
+                        val = 30
+                    lp[field] = max(GATEWAY_TIMEOUT_MIN, min(GATEWAY_TIMEOUT_MAX, val))
+                else:
+                    lp[field] = var.get()
+            elif key.startswith("yandex_ocr."):
+                field = key.split(".", 1)[1]
+                if field == "provider_enabled":
+                    yo[field] = var.get() == locmsg("gui.enabled")
+                else:
+                    yo[field] = var.get()
+        core_debug = self._vars.get("core.debug")
+        log_level = self._vars.get("log.level")
+        lang_ui = self._vars.get("core.language_ui")
+        language_code = _settings_default_language_code()
+        if isinstance(lang_ui, tk.StringVar):
+            language_code = _language_code_from_select_value(lang_ui.get())
+        debug_on_label = locmsg("gui.on")
+        return {
+            "core": {
+                "debug": (core_debug.get() == debug_on_label) if core_debug else False,
+                "log_level": (log_level.get() or "DEBUG").strip()
+                if isinstance(log_level, tk.StringVar)
+                else "DEBUG",
+                "console_log_level": "INFO",
+                "language": language_code,
+            },
+            "llm_providers": lp,
+            "yandex_ocr": yo,
+        }
+
+    def _refresh_general_tab_locale(self) -> None:
+        """Refresh Application tab labels and sidebar article after language change."""
+        refs = self._general_locale_refs
+        st = refs.get("sidebar_title")
+        if st is not None:
+            st.configure(text=locmsg("gui.notes"))
+        at = refs.get("article_text")
+        if at is not None and isinstance(at, tk.Text):
+            at.configure(state=tk.NORMAL)
+            at.delete("1.0", tk.END)
+            at.insert(tk.END, locmsg("settings.application.article"))
+            at.configure(state=tk.DISABLED)
+        lbl = refs.get("label_language")
+        if lbl is not None:
+            lbl.configure(text=locmsg("settings.application.label.language"))
+        lbl = refs.get("label_debug")
+        if lbl is not None:
+            lbl.configure(text=locmsg("settings.application.label.debug"))
+        lbl = refs.get("label_log_level")
+        if lbl is not None:
+            lbl.configure(text=locmsg("settings.application.label.log_level"))
+        for key, msg_key in (
+            ("desc_language", "settings.application.desc.language"),
+            ("desc_debug", "settings.application.desc.debug"),
+            ("desc_log_level", "settings.application.desc.log_level"),
+        ):
+            w = refs.get(key)
+            if w is not None:
+                w.configure(text=locmsg(msg_key))
+        d_off, d_on = _application_debug_select_values()
+        if self._general_debug_select is not None:
+            data = load_app_config_dict()
+            core = data.get("core") or {}
+            self._general_debug_select.set_values((d_off, d_on))
+            dbg = self._vars.get("core.debug")
+            if isinstance(dbg, tk.StringVar):
+                dbg.set(d_on if core.get("debug", False) else d_off)
+
+    def _refresh_llm_ocr_sidebar_locale(self) -> None:
+        """Refresh LLM/OCR side articles, toggles, and form field labels after language change."""
+        p_off, p_on = _provider_toggle_values()
+        data = load_app_config_dict()
+        lp = data.get("llm_providers") or {}
+        yo = data.get("yandex_ocr") or {}
+
+        for refs, article_key in (
+            (self._llm_sidebar_refs, "settings.llm.article"),
+            (self._ocr_sidebar_refs, "settings.ocr.article"),
+        ):
+            st = refs.get("sidebar_title")
+            if st is not None:
+                st.configure(text=locmsg("gui.notes"))
+            at = refs.get("article_text")
+            if at is not None and isinstance(at, tk.Text):
+                at.configure(state=tk.NORMAL)
+                at.delete("1.0", tk.END)
+                at.insert(tk.END, locmsg(article_key))
+                at.configure(state=tk.DISABLED)
+
+        gw_lbl = self._llm_form_locale_refs.get("label_gateway_timeout")
+        if gw_lbl is not None:
+            gw_lbl.configure(text=locmsg("settings.llm.label.gateway_timeout"))
+        gw_desc = self._llm_form_locale_refs.get("desc_gateway_timeout")
+        if gw_desc is not None:
+            gw_desc.configure(text=locmsg("settings.llm.desc.gateway_timeout"))
+
+        api_lbl = locmsg("settings.llm.label.api_key")
+        for lw in self._llm_api_key_labels:
+            if lw is not None and lw.winfo_exists():
+                lw.configure(text=api_lbl)
+
+        yl = self._ocr_form_locale_refs.get("label_yandex_row")
+        if yl is not None and yl.winfo_exists():
+            yl.configure(text=locmsg("settings.ocr.label.yandex_ocr"))
+        for key, msg_key in (
+            ("key_id", "settings.ocr.label.key_id"),
+            ("key_secret", "settings.ocr.label.key_secret"),
+        ):
+            ol = self._ocr_form_locale_refs.get(f"label_{key}")
+            if ol is not None and ol.winfo_exists():
+                ol.configure(text=f"{locmsg(msg_key)}:")
+
+        for pid, sel in self._llm_provider_selects.items():
+            sel.set_values((p_off, p_on))
+            var = self._vars.get(f"llm_providers.{pid}_provider_enabled")
+            if isinstance(var, tk.StringVar):
+                var.set(
+                    p_on if lp.get(f"{pid}_provider_enabled", False) else p_off
+                )
+            self._on_llm_provider_enabled_change(pid)
+
+        if self._ocr_provider_select is not None:
+            self._ocr_provider_select.set_values((p_off, p_on))
+            yo_var = self._vars.get("yandex_ocr.provider_enabled")
+            if isinstance(yo_var, tk.StringVar):
+                yo_var.set(
+                    p_on if yo.get("provider_enabled", False) else p_off
+                )
+            self._on_yandex_ocr_enabled_change()
+
+    def _refresh_topbar_action_labels(self) -> None:
+        """After save, set_language may run; refresh top bar, tabs, and form copy."""
+        self._topbar_btn_back.configure(text=locmsg("gui.back"))
+        self._topbar_btn_save.configure(text=locmsg("gui.save"))
+        if self._page_title_label is not None:
+            self._page_title_label.configure(text=locmsg("settings.title"))
+        try:
+            self.winfo_toplevel().title(self.get_screen_title())
+        except tk.TclError:
+            pass
+        if self._tab_view is not None:
+            self._tab_view.update_tab_labels(_settings_tab_labels())
+        self._refresh_general_tab_locale()
+        self._refresh_llm_ocr_sidebar_locale()
+
+    def refresh_locale(self) -> None:
+        """When set_language runs elsewhere (loader, another screen), refresh this screen."""
+        self._refresh_topbar_action_labels()
+
+    def _save(self) -> None:
+        data = self._get_form_data()
+        save_app_config_dict(data, app_root=self.app_root)
+        self._refresh_topbar_action_labels()
+        try:
+            from src.gui.gui_controller import GUIController
+
+            GUIController.get().notify_locale_changed()
+        except Exception:
+            pass
+        if self._app_layout:
+            self._app_layout.modals.show_info(
+                locmsg("settings.save_modal.title"),
+                locmsg("settings.save_modal.message"),
+            )
+
+    def _go_back(self) -> None:
+        if self.on_back:
+            self.on_back()

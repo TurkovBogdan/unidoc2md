@@ -1,1 +1,188 @@
-"""Этап extract: извлечение контента по каждому обнаруженному документу (многопоточно)."""from __future__ import annotationsfrom typing import Anyfrom src.modules.file_discovery.models import DiscoveredDocumentfrom src.modules.file_extract import (    build_extract_config,    ExtractedDocument,    FileExtractService,    SourceDocument,)from src.modules.file_extract.models import (    CONTENT_TYPE_IMAGE,    CONTENT_TYPE_MARKDOWN,)from src.modules.file_extract.providers.file_extract_provider import get_extension_mapfrom src.modules.project.sections.pipeline_config import (    EXTRACT_THREADS_DEFAULT,    EXTRACT_THREADS_MAX,    EXTRACT_THREADS_MIN,    KEY_EXTRACT_THREADS,)from ..base import BasePipelineStagefrom ...models import (    PipelineContext,    StageResult,)from ..parallel import run_parallel_stagedef _discovered_from_previous(prev: object) -> list[DiscoveredDocument]:    if isinstance(prev, list):        return list(prev)    return []def _normalize_ext(ext: str) -> str:    ext = (ext or "").strip().lower()    return f".{ext}" if ext and not ext.startswith(".") else extdef extract_content_stats(    documents: list[ExtractedDocument | None],) -> tuple[int, int, int]:    """    Сводка по извлечённому контенту: всего фрагментов, изображений, markdown-единиц.    Считаются только ненулевые документы и элементы ``ExtractedDocument.content``.    """    total = 0    images = 0    markdown = 0    for doc in documents:        if doc is None:            continue        for item in doc.content:            total += 1            ct = item.content_type            if ct == CONTENT_TYPE_IMAGE:                images += 1            elif ct == CONTENT_TYPE_MARKDOWN:                markdown += 1    return total, images, markdowndef _would_skip(    doc: DiscoveredDocument,    extract_config: Any,    extension_map: dict,) -> bool:    provider = extension_map.get(_normalize_ext(doc.extension))    if provider is None:        return False    algo = (        extract_config.get_provider_value(provider.provider_code(), "algorithm", "")        or ""    ).strip().lower()    return algo == "skip"class ExtractStage(BasePipelineStage):    """Извлечение контента из списка DiscoveredDocument; result — list[ExtractedDocument | None]."""    @property    def stage_id(self) -> str:        return "extract"    def run(self, context: PipelineContext, input_result: object) -> StageResult:        discovered = _discovered_from_previous(input_result)        extract_config = build_extract_config(            context.config.project_root,            context.config.extract,            context.config.paths.cache_extract,        )        extension_map = get_extension_map()        to_process = [            d for d in discovered if not _would_skip(d, extract_config, extension_map)        ]        dropped = len(discovered) - len(to_process)        if dropped:            context.logger.info(                "Extract: исключено %s файлов (алгоритм «Пропустить»)", dropped            )        try:            threads = int(                context.config.pipeline.get(KEY_EXTRACT_THREADS, EXTRACT_THREADS_DEFAULT)            )        except (TypeError, ValueError):            threads = EXTRACT_THREADS_DEFAULT        threads = max(EXTRACT_THREADS_MIN, min(EXTRACT_THREADS_MAX, threads))        total = len(to_process)        context.logger.info("Extract: очередь %s файлов, workers=%s", total, threads)        extracted_documents: list[ExtractedDocument | None] = [None] * total        task_items = [((i, doc), doc) for i, doc in enumerate(to_process)]        sink = context.progress_sink        if sink is not None:            sink("extract", {"documents_done": 0, "documents_total": total})        def extract_one(doc: DiscoveredDocument) -> ExtractedDocument | None:            return self._execute_one(context, doc)        def handle_result(            meta: tuple[int, DiscoveredDocument],            result: ExtractedDocument | None,        ) -> None:            index, _ = meta            extracted_documents[index] = result        def on_parallel_progress(done: int, tot: int) -> None:            if sink is not None:                sink("extract", {"documents_done": done, "documents_total": tot})        run_parallel_stage(            stage_name="Extract",            logger=context.logger,            task_items=task_items,            max_workers=threads,            cancel_event=context.cancel_event,            worker=extract_one,            handle_result=handle_result,            describe_item=lambda meta: meta[1].filename,            on_progress=on_parallel_progress if sink is not None else None,        )        docs_done = sum(1 for x in extracted_documents if x is not None)        fr_total, fr_img, fr_md = extract_content_stats(extracted_documents)        context.logger.info("Extract: успешно обработано %s файлов", docs_done)        context.logger.info(            "Extract: фрагментов всего=%s, изображений=%s, markdown=%s",            fr_total,            fr_img,            fr_md,        )        return StageResult.ok(            extracted_documents,            payload=[docs_done, total, fr_total, fr_img, fr_md],        )    def _execute_one(        self,        context: PipelineContext,        discovered_document: DiscoveredDocument,    ) -> ExtractedDocument | None:        if context.cancel_event is not None and context.cancel_event.is_set():            return None        source = SourceDocument(            path=discovered_document.path,            folder=discovered_document.folder,            filename=discovered_document.filename,            extension=discovered_document.extension,            mime_type=discovered_document.mime_type,            file_hash=discovered_document.hash,        )        result = FileExtractService(logger=None).extract(            build_extract_config(                context.config.project_root,                context.config.extract,                context.config.paths.cache_extract,            ),            source,            cancel_event=context.cancel_event,        )        if result is None or not result.content:            return None        return result
+"""Этап extract: извлечение контента по каждому обнаруженному документу (многопоточно)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from src.modules.file_discovery.models import DiscoveredDocument
+from src.modules.file_extract import (
+    build_extract_config,
+    ExtractedDocument,
+    FileExtractService,
+    SourceDocument,
+)
+from src.modules.file_extract.models import (
+    CONTENT_TYPE_IMAGE,
+    CONTENT_TYPE_MARKDOWN,
+)
+from src.modules.file_extract.providers.file_extract_provider import get_extension_map
+from src.modules.project.sections.pipeline_config import (
+    EXTRACT_THREADS_DEFAULT,
+    EXTRACT_THREADS_MAX,
+    EXTRACT_THREADS_MIN,
+    KEY_EXTRACT_THREADS,
+)
+from ..base import BasePipelineStage
+from ...models import (
+    PipelineContext,
+    StageResult,
+)
+from ..parallel import run_parallel_stage
+
+
+def _discovered_from_previous(prev: object) -> list[DiscoveredDocument]:
+    if isinstance(prev, list):
+        return list(prev)
+    return []
+
+
+def _normalize_ext(ext: str) -> str:
+    ext = (ext or "").strip().lower()
+    return f".{ext}" if ext and not ext.startswith(".") else ext
+
+
+def extract_content_stats(
+    documents: list[ExtractedDocument | None],
+) -> tuple[int, int, int]:
+    """
+    Сводка по извлечённому контенту: всего фрагментов, изображений, markdown-единиц.
+    Считаются только ненулевые документы и элементы ``ExtractedDocument.content``.
+    """
+    total = 0
+    images = 0
+    markdown = 0
+    for doc in documents:
+        if doc is None:
+            continue
+        for item in doc.content:
+            total += 1
+            ct = item.content_type
+            if ct == CONTENT_TYPE_IMAGE:
+                images += 1
+            elif ct == CONTENT_TYPE_MARKDOWN:
+                markdown += 1
+    return total, images, markdown
+
+
+def _would_skip(
+    doc: DiscoveredDocument,
+    extract_config: Any,
+    extension_map: dict,
+) -> bool:
+    provider = extension_map.get(_normalize_ext(doc.extension))
+    if provider is None:
+        return False
+    algo = (
+        extract_config.get_provider_value(provider.provider_code(), "algorithm", "")
+        or ""
+    ).strip().lower()
+    return algo == "skip"
+
+
+class ExtractStage(BasePipelineStage):
+    """Извлечение контента из списка DiscoveredDocument; result — list[ExtractedDocument | None]."""
+
+    @property
+    def stage_id(self) -> str:
+        return "extract"
+
+    def run(self, context: PipelineContext, input_result: object) -> StageResult:
+        discovered = _discovered_from_previous(input_result)
+        extract_config = build_extract_config(
+            context.config.project_root,
+            context.config.extract,
+            context.config.paths.cache_extract,
+        )
+        extension_map = get_extension_map()
+        to_process = [
+            d for d in discovered if not _would_skip(d, extract_config, extension_map)
+        ]
+        dropped = len(discovered) - len(to_process)
+        if dropped:
+            context.logger.info(
+                'Extract: skipped %s files (algorithm "skip")', dropped
+            )
+
+        try:
+            threads = int(
+                context.config.pipeline.get(KEY_EXTRACT_THREADS, EXTRACT_THREADS_DEFAULT)
+            )
+        except (TypeError, ValueError):
+            threads = EXTRACT_THREADS_DEFAULT
+        threads = max(EXTRACT_THREADS_MIN, min(EXTRACT_THREADS_MAX, threads))
+
+        total = len(to_process)
+        context.logger.info("Extract: queue %s files, workers=%s", total, threads)
+        extracted_documents: list[ExtractedDocument | None] = [None] * total
+        task_items = [((i, doc), doc) for i, doc in enumerate(to_process)]
+
+        sink = context.progress_sink
+        if sink is not None:
+            sink("extract", {"documents_done": 0, "documents_total": total})
+
+        def extract_one(doc: DiscoveredDocument) -> ExtractedDocument | None:
+            return self._execute_one(context, doc)
+
+        def handle_result(
+            meta: tuple[int, DiscoveredDocument],
+            result: ExtractedDocument | None,
+        ) -> None:
+            index, _ = meta
+            extracted_documents[index] = result
+
+        def on_parallel_progress(done: int, tot: int) -> None:
+            if sink is not None:
+                sink("extract", {"documents_done": done, "documents_total": tot})
+
+        run_parallel_stage(
+            stage_name="Extract",
+            logger=context.logger,
+            task_items=task_items,
+            max_workers=threads,
+            cancel_event=context.cancel_event,
+            worker=extract_one,
+            handle_result=handle_result,
+            describe_item=lambda meta: meta[1].filename,
+            on_progress=on_parallel_progress if sink is not None else None,
+        )
+        docs_done = sum(1 for x in extracted_documents if x is not None)
+        fr_total, fr_img, fr_md = extract_content_stats(extracted_documents)
+        context.logger.info("Extract: successfully processed %s files", docs_done)
+        context.logger.info(
+            "Extract: fragments total=%s, images=%s, markdown=%s",
+            fr_total,
+            fr_img,
+            fr_md,
+        )
+        return StageResult.ok(
+            extracted_documents,
+            payload=[docs_done, total, fr_total, fr_img, fr_md],
+        )
+
+    def _execute_one(
+        self,
+        context: PipelineContext,
+        discovered_document: DiscoveredDocument,
+    ) -> ExtractedDocument | None:
+        if context.cancel_event is not None and context.cancel_event.is_set():
+            return None
+        source = SourceDocument(
+            path=discovered_document.path,
+            folder=discovered_document.folder,
+            filename=discovered_document.filename,
+            extension=discovered_document.extension,
+            mime_type=discovered_document.mime_type,
+            file_hash=discovered_document.hash,
+        )
+        result = FileExtractService(logger=None).extract(
+            build_extract_config(
+                context.config.project_root,
+                context.config.extract,
+                context.config.paths.cache_extract,
+            ),
+            source,
+            cancel_event=context.cancel_event,
+        )
+        if result is None or not result.content:
+            return None
+        return result

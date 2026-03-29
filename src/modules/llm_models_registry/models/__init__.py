@@ -1,1 +1,7 @@
-"""Модели данных модуля llm_models_registry."""from __future__ import annotationsfrom .llm_model import LLMModel__all__ = ["LLMModel"]
+"""Data models for the llm_models_registry module."""
+
+from __future__ import annotations
+
+from .llm_model import LLMModel
+
+__all__ = ["LLMModel"]

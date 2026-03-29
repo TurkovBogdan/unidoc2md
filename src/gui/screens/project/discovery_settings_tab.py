@@ -1,1 +1,247 @@
-"""Таб «Файлы проекта»: настройки discovery и таблица файлов."""from __future__ import annotationsimport tkinter as tkfrom pathlib import Pathfrom tkinter import ttkfrom typing import Anyfrom src.modules.file_discovery import (    DiscoveryService,    FileDiscoveryPathNotFoundError,)from src.modules.file_discovery.models import DiscoveryConfigfrom src.modules.file_extract import get_supported_extensionsfrom src.core import locmsgfrom src.gui.template.components import CustomScrollbarfrom src.gui.template.elements import gui_element_header_3from src.gui.template.elements.classes.gui_input_select import GuiInputSelectfrom src.gui.template.styles import FONT_FAMILY_UI, PALETTE, SPACING, UI_FONT_SIZE, UI_TABSfrom src.gui.utils import open_folderclass DiscoverySettingsTab(ttk.Frame):    """Кнопки открытия/обновления, рекурсивный поиск и таблица файлов."""    SETTINGS_WIDTH_PX = 520    _SEPARATOR_PADX = 12    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:        super().__init__(parent, **kwargs)        self._project_root = project_root        self._label_scope_root: str = ""        self._label_scope_nested: str = ""        self._discovery_scope_var = tk.StringVar(master=self)        self._file_search_tree: ttk.Treeview | None = None        self._file_search_scrollbar: tk.Widget | None = None        self._section_header: ttk.Label | None = None        self._btn_open_docs: ttk.Button | None = None        self._btn_refresh: ttk.Button | None = None        self._scope_select: GuiInputSelect | None = None        self._article_title_label: ttk.Label | None = None        self._build_ui()    def _build_ui(self) -> None:        padx, pady = UI_TABS["content_padding"]        wrap = ttk.Frame(self)        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])        left_frame.pack_propagate(False)        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        self._section_header = gui_element_header_3(            left_frame, locmsg("project.discovery.section_title")        )        gap = SPACING["sm"]        surf = PALETTE["bg_surface"]        row = tk.Frame(left_frame, bg=surf)        row.pack(fill=tk.X, pady=(0, gap))        self._btn_open_docs = ttk.Button(            row,            text=locmsg("gui.project.open_documents"),            command=lambda: open_folder(self._project_root / "docs"),            style="Secondary.TButton",        )        self._btn_open_docs.pack(side=tk.LEFT)        tk.Frame(row, width=gap, bg=surf).pack(side=tk.LEFT)        self._btn_refresh = ttk.Button(            row,            text=locmsg("project.discovery.refresh"),            command=self.refresh_table,            style="Secondary.TButton",        )        self._btn_refresh.pack(side=tk.LEFT)        tk.Frame(row, width=gap, bg=surf).pack(side=tk.LEFT)        self._label_scope_root = locmsg("project.discovery.scope.root_only")        self._label_scope_nested = locmsg("project.discovery.nested_folders")        self._discovery_scope_var.set(self._label_scope_nested)        self._scope_select = GuiInputSelect(            row,            variable=self._discovery_scope_var,            values=(self._label_scope_root, self._label_scope_nested),            width=22,        )        self._scope_select.pack(side=tk.LEFT)        self._discovery_scope_var.trace_add("write", lambda *_: self.refresh_table())        table_wrap = ttk.Frame(left_frame)        table_wrap.pack(fill=tk.BOTH, expand=True)        columns = ("filepath", "extension")        self._file_search_tree = ttk.Treeview(            table_wrap,            columns=columns,            show="headings",            selectmode="browse",            height=12,        )        self._file_search_tree.heading("filepath", text=locmsg("project.discovery.column.file"))        self._file_search_tree.heading("extension", text=locmsg("project.discovery.column.format"))        self._file_search_tree.column("filepath", width=400, stretch=True, anchor=tk.W)        self._file_search_tree.column("extension", width=80, stretch=False, anchor=tk.W)        self._file_search_scrollbar = CustomScrollbar(table_wrap, command=self._file_search_tree.yview)        self._file_search_tree.configure(yscrollcommand=self._file_search_scrollbar.set)        self._file_search_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        self._file_search_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))        sep.pack_propagate(False)        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        right_frame.columnconfigure(0, weight=1)        right_frame.rowconfigure(1, weight=1)        self._article_title_label = ttk.Label(            right_frame, text=locmsg("project.discovery.notes_title"), style="RightPanelTitle.TLabel"        )        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])        article_container.grid(row=1, column=0, sticky=tk.NSEW)        article_container.columnconfigure(0, weight=1)        article_container.rowconfigure(0, weight=1)        self._article_text = tk.Text(            article_container,            wrap=tk.WORD,            state=tk.DISABLED,            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),            bg=PALETTE["bg_surface"],            fg=PALETTE["text_muted"],            insertbackground=PALETTE["text_muted"],            selectbackground=PALETTE["select_bg"],            selectforeground=PALETTE["select_fg"],            relief=tk.FLAT,            bd=0,            highlightthickness=0,        )        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)        self._article_text.configure(state=tk.NORMAL)        self._article_text.insert(tk.END, locmsg("project.discovery.article"))        self._article_text.configure(state=tk.DISABLED)    def refresh_locale(self) -> None:        """Тексты вкладки после смены языка."""        try:            old_root = self._label_scope_root            old_nested = self._label_scope_nested            cur = (self._discovery_scope_var.get() or "").strip()            if cur == old_nested:                recursive = True            elif cur == old_root:                recursive = False            else:                recursive = True            self._label_scope_root = locmsg("project.discovery.scope.root_only")            self._label_scope_nested = locmsg("project.discovery.nested_folders")            self._discovery_scope_var.set(                self._label_scope_nested if recursive else self._label_scope_root            )            if self._scope_select is not None:                self._scope_select.set_values((self._label_scope_root, self._label_scope_nested))            if self._section_header is not None and self._section_header.winfo_exists():                self._section_header.configure(text=locmsg("project.discovery.section_title"))            if self._btn_open_docs is not None and self._btn_open_docs.winfo_exists():                self._btn_open_docs.configure(text=locmsg("gui.project.open_documents"))            if self._btn_refresh is not None and self._btn_refresh.winfo_exists():                self._btn_refresh.configure(text=locmsg("project.discovery.refresh"))            if self._file_search_tree is not None and self._file_search_tree.winfo_exists():                self._file_search_tree.heading(                    "filepath", text=locmsg("project.discovery.column.file")                )                self._file_search_tree.heading(                    "extension", text=locmsg("project.discovery.column.format")                )            if self._article_title_label is not None and self._article_title_label.winfo_exists():                self._article_title_label.configure(text=locmsg("project.discovery.notes_title"))            self._article_text.configure(state=tk.NORMAL)            self._article_text.delete("1.0", tk.END)            self._article_text.insert(tk.END, locmsg("project.discovery.article"))            self._article_text.configure(state=tk.DISABLED)        except tk.TclError:            pass    def refresh_table(self) -> None:        """Заполняет таблицу файлов: отображаем все обнаруженные файлы поддерживаемых форматов.        Настройки extract (алгоритм «Пропустить») не учитываются — фильтрация по skip только в Pipeline."""        if not self._file_search_tree:            return        self._file_search_tree.delete(*self._file_search_tree.get_children())        docs_dir = self._project_root / "docs"        recursive = self._is_recursive_search()        extensions = get_supported_extensions()        if not extensions:            extensions = {"*"}        config = DiscoveryConfig(            path=str(docs_dir),            extensions=extensions,            hash=False,            recursive_search=recursive,        )        try:            service = DiscoveryService()            documents = service.discover_files(config)        except FileDiscoveryPathNotFoundError:            documents = []        for i, doc in enumerate(documents):            # folder уже нормализован относительно docs            rel_str = doc.folder if doc.folder != "." else ""            full_name = f"{doc.filename}{doc.extension}" if doc.extension else doc.filename            name_with_path = f"{rel_str}/{full_name}".lstrip("/") if rel_str else full_name            ext_display = (doc.extension or "").lstrip(".")            self._file_search_tree.insert(                "",                tk.END,                iid=f"f{i}",                values=(name_with_path, ext_display),            )    def _is_recursive_search(self) -> bool:        try:            return self._discovery_scope_var.get() == self._label_scope_nested        except (TypeError, tk.TclError):            return True    def load_discovery(self, data: dict[str, Any] | None) -> None:        """Заполняет виджеты из словаря discovery (recursive_search)."""        data = data or {}        recursive = bool(data.get("recursive_search", True))        self._discovery_scope_var.set(            self._label_scope_nested if recursive else self._label_scope_root        )    def get_discovery_payload(self) -> dict[str, Any]:        """Возвращает payload для секции discovery."""        return {"recursive_search": self._is_recursive_search()}
+"""Project files tab: discovery settings and file table."""
+
+from __future__ import annotations
+
+import tkinter as tk
+from pathlib import Path
+from tkinter import ttk
+from typing import Any
+
+from src.modules.file_discovery import (
+    DiscoveryService,
+    FileDiscoveryPathNotFoundError,
+)
+from src.modules.file_discovery.models import DiscoveryConfig
+from src.modules.file_extract import get_supported_extensions
+
+from src.core import locmsg
+from src.gui.template.components import CustomScrollbar
+from src.gui.template.elements import gui_element_header_3
+from src.gui.template.elements.classes.gui_input_select import GuiInputSelect
+from src.gui.template.styles import FONT_FAMILY_UI, PALETTE, SPACING, UI_FONT_SIZE, UI_TABS
+from src.gui.utils import open_folder
+
+
+class DiscoverySettingsTab(ttk.Frame):
+    """Open/refresh actions, recursive scope select, and discovered files table."""
+
+    SETTINGS_WIDTH_PX = 520
+    _SEPARATOR_PADX = 12
+
+    def __init__(self, parent: ttk.Frame, project_root: Path, **kwargs) -> None:
+        super().__init__(parent, **kwargs)
+        self._project_root = project_root
+        self._label_scope_root: str = ""
+        self._label_scope_nested: str = ""
+        self._discovery_scope_var = tk.StringVar(master=self)
+        self._file_search_tree: ttk.Treeview | None = None
+        self._file_search_scrollbar: tk.Widget | None = None
+        self._section_header: ttk.Label | None = None
+        self._btn_open_docs: ttk.Button | None = None
+        self._btn_refresh: ttk.Button | None = None
+        self._scope_select: GuiInputSelect | None = None
+        self._article_title_label: ttk.Label | None = None
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        padx, pady = UI_TABS["content_padding"]
+        wrap = ttk.Frame(self)
+        wrap.pack(fill=tk.BOTH, expand=True, padx=padx, pady=pady)
+
+        left_frame = tk.Frame(wrap, width=self.SETTINGS_WIDTH_PX, bg=PALETTE["bg_surface"])
+        left_frame.pack_propagate(False)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        self._section_header = gui_element_header_3(
+            left_frame, locmsg("project.discovery.section_title")
+        )
+        gap = SPACING["sm"]
+        surf = PALETTE["bg_surface"]
+        row = tk.Frame(left_frame, bg=surf)
+        row.pack(fill=tk.X, pady=(0, gap))
+
+        self._btn_open_docs = ttk.Button(
+            row,
+            text=locmsg("gui.project.open_documents"),
+            command=lambda: open_folder(self._project_root / "docs"),
+            style="Secondary.TButton",
+        )
+        self._btn_open_docs.pack(side=tk.LEFT)
+        tk.Frame(row, width=gap, bg=surf).pack(side=tk.LEFT)
+
+        self._btn_refresh = ttk.Button(
+            row,
+            text=locmsg("project.discovery.refresh"),
+            command=self.refresh_table,
+            style="Secondary.TButton",
+        )
+        self._btn_refresh.pack(side=tk.LEFT)
+        tk.Frame(row, width=gap, bg=surf).pack(side=tk.LEFT)
+
+        self._label_scope_root = locmsg("project.discovery.scope.root_only")
+        self._label_scope_nested = locmsg("project.discovery.nested_folders")
+        self._discovery_scope_var.set(self._label_scope_nested)
+        self._scope_select = GuiInputSelect(
+            row,
+            variable=self._discovery_scope_var,
+            values=(self._label_scope_root, self._label_scope_nested),
+            width=22,
+        )
+        self._scope_select.pack(side=tk.LEFT)
+
+        self._discovery_scope_var.trace_add("write", lambda *_: self.refresh_table())
+        table_wrap = ttk.Frame(left_frame)
+        table_wrap.pack(fill=tk.BOTH, expand=True)
+        columns = ("filepath", "extension")
+        self._file_search_tree = ttk.Treeview(
+            table_wrap,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            height=12,
+        )
+        self._file_search_tree.heading("filepath", text=locmsg("project.discovery.column.file"))
+        self._file_search_tree.heading("extension", text=locmsg("project.discovery.column.format"))
+        self._file_search_tree.column("filepath", width=400, stretch=True, anchor=tk.W)
+        self._file_search_tree.column("extension", width=80, stretch=False, anchor=tk.W)
+        self._file_search_scrollbar = CustomScrollbar(table_wrap, command=self._file_search_tree.yview)
+        self._file_search_tree.configure(yscrollcommand=self._file_search_scrollbar.set)
+        self._file_search_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._file_search_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        sep = tk.Frame(wrap, width=1, bg=PALETTE["border"], highlightthickness=0)
+        sep.pack(side=tk.LEFT, fill=tk.Y, padx=(0, self._SEPARATOR_PADX))
+        sep.pack_propagate(False)
+
+        right_frame = tk.Frame(wrap, bg=PALETTE["bg_surface"])
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        right_frame.columnconfigure(0, weight=1)
+        right_frame.rowconfigure(1, weight=1)
+        self._article_title_label = ttk.Label(
+            right_frame, text=locmsg("project.discovery.notes_title"), style="RightPanelTitle.TLabel"
+        )
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
+        article_container.grid(row=1, column=0, sticky=tk.NSEW)
+        article_container.columnconfigure(0, weight=1)
+        article_container.rowconfigure(0, weight=1)
+        self._article_text = tk.Text(
+            article_container,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=(FONT_FAMILY_UI, UI_FONT_SIZE["small"]),
+            bg=PALETTE["bg_surface"],
+            fg=PALETTE["text_muted"],
+            insertbackground=PALETTE["text_muted"],
+            selectbackground=PALETTE["select_bg"],
+            selectforeground=PALETTE["select_fg"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+        )
+        self._article_scrollbar = CustomScrollbar(article_container, command=self._article_text.yview)
+        self._article_text.configure(yscrollcommand=self._article_scrollbar.set)
+        self._article_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._article_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._article_text.configure(state=tk.NORMAL)
+        self._article_text.insert(tk.END, locmsg("project.discovery.article"))
+        self._article_text.configure(state=tk.DISABLED)
+
+    def refresh_locale(self) -> None:
+        """Refresh tab strings after language change."""
+        try:
+            old_root = self._label_scope_root
+            old_nested = self._label_scope_nested
+            cur = (self._discovery_scope_var.get() or "").strip()
+            if cur == old_nested:
+                recursive = True
+            elif cur == old_root:
+                recursive = False
+            else:
+                recursive = True
+
+            self._label_scope_root = locmsg("project.discovery.scope.root_only")
+            self._label_scope_nested = locmsg("project.discovery.nested_folders")
+            self._discovery_scope_var.set(
+                self._label_scope_nested if recursive else self._label_scope_root
+            )
+            if self._scope_select is not None:
+                self._scope_select.set_values((self._label_scope_root, self._label_scope_nested))
+
+            if self._section_header is not None and self._section_header.winfo_exists():
+                self._section_header.configure(text=locmsg("project.discovery.section_title"))
+            if self._btn_open_docs is not None and self._btn_open_docs.winfo_exists():
+                self._btn_open_docs.configure(text=locmsg("gui.project.open_documents"))
+            if self._btn_refresh is not None and self._btn_refresh.winfo_exists():
+                self._btn_refresh.configure(text=locmsg("project.discovery.refresh"))
+
+            if self._file_search_tree is not None and self._file_search_tree.winfo_exists():
+                self._file_search_tree.heading(
+                    "filepath", text=locmsg("project.discovery.column.file")
+                )
+                self._file_search_tree.heading(
+                    "extension", text=locmsg("project.discovery.column.format")
+                )
+
+            if self._article_title_label is not None and self._article_title_label.winfo_exists():
+                self._article_title_label.configure(text=locmsg("project.discovery.notes_title"))
+            self._article_text.configure(state=tk.NORMAL)
+            self._article_text.delete("1.0", tk.END)
+            self._article_text.insert(tk.END, locmsg("project.discovery.article"))
+            self._article_text.configure(state=tk.DISABLED)
+        except tk.TclError:
+            pass
+
+    def refresh_table(self) -> None:
+        """Fill the table with all discovered files of supported types.
+
+        Extract «skip» settings are ignored here; skip filtering applies only in the pipeline.
+        """
+        if not self._file_search_tree:
+            return
+        self._file_search_tree.delete(*self._file_search_tree.get_children())
+        docs_dir = self._project_root / "docs"
+        recursive = self._is_recursive_search()
+        extensions = get_supported_extensions()
+        if not extensions:
+            extensions = {"*"}
+        config = DiscoveryConfig(
+            path=str(docs_dir),
+            extensions=extensions,
+            hash=False,
+            recursive_search=recursive,
+        )
+        try:
+            service = DiscoveryService()
+            documents = service.discover_files(config)
+        except FileDiscoveryPathNotFoundError:
+            documents = []
+        for i, doc in enumerate(documents):
+            # folder is already normalized relative to docs
+            rel_str = doc.folder if doc.folder != "." else ""
+            full_name = f"{doc.filename}{doc.extension}" if doc.extension else doc.filename
+            name_with_path = f"{rel_str}/{full_name}".lstrip("/") if rel_str else full_name
+            ext_display = (doc.extension or "").lstrip(".")
+            self._file_search_tree.insert(
+                "",
+                tk.END,
+                iid=f"f{i}",
+                values=(name_with_path, ext_display),
+            )
+
+    def _is_recursive_search(self) -> bool:
+        try:
+            return self._discovery_scope_var.get() == self._label_scope_nested
+        except (TypeError, tk.TclError):
+            return True
+
+    def load_discovery(self, data: dict[str, Any] | None) -> None:
+        """Load widgets from a discovery dict (recursive_search)."""
+        data = data or {}
+        recursive = bool(data.get("recursive_search", True))
+        self._discovery_scope_var.set(
+            self._label_scope_nested if recursive else self._label_scope_root
+        )
+
+    def get_discovery_payload(self) -> dict[str, Any]:
+        """Return the discovery section payload."""
+        return {"recursive_search": self._is_recursive_search()}
