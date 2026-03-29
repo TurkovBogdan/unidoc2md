@@ -1,4 +1,4 @@
-"""Тесты AppConfigBuilder: создание app.ini, merge недостающих ключей, идемпотентность, парсинг."""
+"""Tests for AppConfigBuilder: app.ini creation, merging missing keys, idempotency, parsing."""
 
 from __future__ import annotations
 

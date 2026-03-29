@@ -1,4 +1,4 @@
-"""Базовые инварианты: build_extract_config из normalized payload, runtime extraction для .pdf."""
+"""Basic invariants: build_extract_config from normalized payload, runtime extraction for .pdf."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from src.modules.file_extract.providers import PdfExtractProvider
 
 
 def test_extract_schema_groups_have_title_and_description() -> None:
-    """Группы extract-схемы: title совпадает с кодом провайдера; description — str."""
+    """Extract schema groups: title matches provider code; description is str."""
     collection = get_extract_settings_schema()
     for group in collection.groups:
         assert group.title == group.code, f"Group {group.code!r} title must equal code"
@@ -24,7 +24,7 @@ def test_extract_schema_groups_have_title_and_description() -> None:
 
 
 def test_normalize_extract_payload_none_returns_group_based_default() -> None:
-    """normalize_extract_payload(None) возвращает payload по умолчанию в формате group_code -> values."""
+    """normalize_extract_payload(None) returns default payload as group_code -> values."""
     payload = normalize_extract_payload(None)
     assert isinstance(payload, dict)
     assert "pdf_extract_provider" in payload
@@ -32,7 +32,7 @@ def test_normalize_extract_payload_none_returns_group_based_default() -> None:
 
 
 def test_build_extract_config_from_normalized_payload(tmp_path: Path) -> None:
-    """build_extract_config строит runtime config из нормализованного extract payload."""
+    """build_extract_config builds runtime config from normalized extract payload."""
     payload = normalize_extract_payload(None)
     config = build_extract_config(tmp_path, payload)
     assert isinstance(config, ExtractConfig)
@@ -46,7 +46,7 @@ def test_build_extract_config_from_normalized_payload(tmp_path: Path) -> None:
 
 
 def test_build_extract_config_pdf_skip_algorithm(tmp_path: Path) -> None:
-    """Явный algorithm=skip сохраняется в конфиге PDF-провайдера."""
+    """Explicit algorithm=skip is preserved in the PDF provider config."""
     payload = normalize_extract_payload({
         "pdf_extract_provider": {"algorithm": PdfExtractProvider.PDF_ALGORITHM_SKIP},
     })

@@ -1,4 +1,4 @@
-"""Тесты prepare_core_runtime: только app-level инфраструктура, без доменных файлов."""
+"""Tests for prepare_core_runtime: app-level infrastructure only, no domain files."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from src.app_path import AppPath, ensure_app_runtime_dirs
 from src.core import AppConfigStore
 from src.core.bootstrap import CoreBootstrap, prepare_core_runtime
-from src.core.app_path import AppPath
 from src.core.logger import set_system_logger
 
 _TEST_LANGUAGES = {
@@ -20,7 +20,7 @@ _TEST_LANGUAGES = {
 
 @pytest.fixture(autouse=True)
 def _reset_core_state_after_bootstrap_tests() -> None:
-    """Сбрасываем store и логгер после каждого теста, чтобы не влиять на другие тесты."""
+    """Reset store and logger after each test to avoid cross-test leakage."""
     yield
     AppConfigStore.reset()
     set_system_logger(None)
@@ -33,7 +33,8 @@ def test_prepare_core_runtime_returns_app_path(tmp_path: Path) -> None:
 
 
 def test_prepare_core_runtime_creates_app_dirs(tmp_path: Path) -> None:
-    prepare_core_runtime(tmp_path)
+    paths = prepare_core_runtime(tmp_path)
+    ensure_app_runtime_dirs(paths)
     assert (tmp_path / "projects").is_dir()
     assert (tmp_path / "data").is_dir()
     assert (tmp_path / "data" / "source").is_dir()
@@ -63,7 +64,7 @@ def test_prepare_core_runtime_creates_app_ini(tmp_path: Path) -> None:
 
 
 def test_prepare_core_runtime_does_not_create_domain_files(tmp_path: Path) -> None:
-    """core не создаёт доменные файлы llm_providers и llm_model_registry."""
+    """Core bootstrap does not create llm_providers or llm_model_registry domain files."""
     prepare_core_runtime(tmp_path)
     assert not (tmp_path / "data" / "openai-image-support.txt").exists()
     assert not (tmp_path / "data" / "yandex-image-support.txt").exists()

@@ -1,1 +1,1 @@
-"""Тесты сервисов file_discovery."""
+"""Tests for file_discovery services."""

@@ -1,4 +1,4 @@
-"""Тесты провайдеров: контракт title/description, PdfExtractProvider."""
+"""Provider tests: title/description contract, PdfExtractProvider."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from src.modules.file_extract.providers import PdfExtractProvider
 
 
 def test_provider_contract_title_and_description() -> None:
-    """provider_title() возвращает код провайдера (как provider_code); описание группы — строка."""
+    """provider_title() returns the provider code (same as provider_code); group description is a string."""
     assert PdfExtractProvider.provider_title() == PdfExtractProvider.PROVIDER_CODE
     assert isinstance(PdfExtractProvider.provider_description(), str)
 

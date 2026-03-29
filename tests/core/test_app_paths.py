@@ -1,4 +1,4 @@
-"""Тесты AppPath.from_root, resolve_runtime_root, project_root."""
+"""Tests for AppPath.from_root, resolve_runtime_root, project_root."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from src.app_path import AppPath
 from src.core.app_path import (
-    AppPath,
     project_root,
     resolve_packaged_assets_data_path,
     resolve_runtime_root,

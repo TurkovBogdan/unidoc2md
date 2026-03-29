@@ -1,1 +1,39 @@
-"""Фикстуры реестра UI-текстов для тестов. Синхронизировано с src/gui/docs/ui-texts.md."""from __future__ import annotations# Ожидаемые заголовки экранов (SCREEN_TITLE у классов экранов)EXPECTED_SCREEN_TITLES = {    "unidoc2md | Список проектов",    "unidoc2md | Настройки",    "unidoc2md | Настройка моделей",    "unidoc2md | Редактирование модели",    "unidoc2md | Выполнение",    "unidoc2md",}# Ключевые кнопки/действия (для проверки наличия в реестре документации)EXPECTED_BUTTON_LABELS = frozenset({    "Вернуться",    "Назад",    "Сохранить",    "Запустить",    "Отмена",    "ОК",    "Создать",    "Удалить",    "Открыть",    "Открыть папку",    "Настройки",    "Настройка моделей",    "Редактировать",    "Синхронизировать",})# Заголовки страниц (первый уровень)EXPECTED_PAGE_TITLES = frozenset({    "Проекты",    "Настройки",    "Модели",})
+"""UI text registry fixtures for tests. Keep in sync with src/gui/docs/ui-texts.md when present."""
+
+from __future__ import annotations
+
+# Expected window titles (ru locale strings from locale/ru/*.json)
+EXPECTED_SCREEN_TITLES = {
+    "unidoc2md — Конфигуратор проектов",
+    "unidoc2md | Проекты",
+    "unidoc2md | Настройки",
+    "unidoc2md | Настройка моделей",
+    "unidoc2md | Редактирование модели",
+    "unidoc2md | Выполнение",
+    "unidoc2md",
+}
+
+# Key button / action labels (documentation registry check)
+EXPECTED_BUTTON_LABELS = frozenset({
+    "Вернуться",
+    "Назад",
+    "Сохранить",
+    "Запустить",
+    "Отмена",
+    "ОК",
+    "Создать",
+    "Удалить",
+    "Открыть",
+    "Открыть папку",
+    "Настройки",
+    "Настройка моделей",
+    "Редактировать",
+    "Синхронизировать",
+})
+
+# Page-level headings (first level)
+EXPECTED_PAGE_TITLES = frozenset({
+    "Проекты",
+    "Настройки",
+    "Модели",
+})

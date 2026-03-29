@@ -1,1 +1,1 @@
-"""Тесты GUI: консоль pipeline, адаптеры, реестр UI-текстов."""
+"""GUI tests: pipeline console, adapters, UI text registry."""

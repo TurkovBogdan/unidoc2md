@@ -1,4 +1,4 @@
-"""Тесты core-локализации через AppLocaleStore."""
+"""Tests for core localization via AppLocaleStore."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from src.core import AppConfigStore
 from src.core.app_locale import (
     AVAILABLE_LANGUAGES,
     AppLocaleStore,
@@ -21,7 +22,9 @@ from src.core.app_path import project_root
 
 
 @pytest.fixture(autouse=True)
-def _configure_languages() -> None:
+def _configure_languages(tmp_path: Path) -> None:
+    AppConfigStore.reset()
+    AppConfigStore.load_or_create(tmp_path)
     set_available_languages(
         {
             "ru": "Русский",
@@ -76,6 +79,20 @@ def test_set_language_en_and_locmsg() -> None:
 def test_set_language_zh_and_locmsg() -> None:
     set_language("zh")
     assert locmsg("error.project_not_found") == "未找到项目"
+
+
+def test_set_language_persists_to_same_root_as_load_or_create(tmp_path: Path) -> None:
+    """Regression: save without an explicit root must not write under resolve_runtime_root()."""
+    from src.core.app_path import resolve_runtime_root
+
+    runtime_ini = resolve_runtime_root() / "app.ini"
+    before = runtime_ini.read_text(encoding="utf-8") if runtime_ini.is_file() else None
+    set_language("en")
+    ini_text = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    assert "LANGUAGE" in ini_text
+    assert "en" in ini_text
+    if before is not None:
+        assert runtime_ini.read_text(encoding="utf-8") == before
 
 
 def test_resolve_packaged_locale_path_source_tree() -> None:

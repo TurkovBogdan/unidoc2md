@@ -1,1 +1,47 @@
-"""Тесты адаптера backend: проекты, конфиги (без полного e2e)."""from __future__ import annotationsfrom pathlib import Pathfrom unittest.mock import patchimport pytestfrom src.gui.adapters import backenddef test_load_projects_empty_app_root_returns_list(tmp_path: Path) -> None:    """В пустой app_root список проектов пуст."""    result = backend.load_projects(tmp_path)    assert isinstance(result, list)    assert len(result) == 0def test_create_project_then_load_projects_returns_one(tmp_path: Path) -> None:    """После создания проекта он появляется в списке."""    backend.create_project(tmp_path, "test_project")    result = backend.load_projects(tmp_path)    assert len(result) == 1    assert result[0].path == tmp_path / "projects" / "test_project"    assert result[0].id == "test_project"def test_remove_project_removes_from_list(tmp_path: Path) -> None:    """После удаления проекта его нет в списке."""    project_root = backend.create_project(tmp_path, "to_remove")    backend.remove_project(tmp_path, project_root)    result = backend.load_projects(tmp_path)    assert len(result) == 0def test_validate_config_returns_tuple_of_three(tmp_path: Path) -> None:    """validate_config возвращает (is_valid, errors, warnings)."""    from src.modules.project.config_validation import ValidationResult    project_root = backend.create_project(tmp_path, "v")    with patch("src.gui.adapters.backend.validate_project_config") as m:        m.return_value = ValidationResult(is_valid=True, errors=[], warnings=[])        is_valid, errors, warnings = backend.validate_config(project_root, config_data={})    assert isinstance(is_valid, bool)    assert isinstance(errors, list)    assert isinstance(warnings, list)
+"""Tests for backend adapter: projects, configs (not full e2e)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from src.gui.adapters import backend
+
+
+def test_load_projects_empty_app_root_returns_list(tmp_path: Path) -> None:
+    """With an empty app_root, the project list is empty."""
+    result = backend.load_projects(tmp_path)
+    assert isinstance(result, list)
+    assert len(result) == 0
+
+
+def test_create_project_then_load_projects_returns_one(tmp_path: Path) -> None:
+    """After creating a project, it appears in the list."""
+    backend.create_project(tmp_path, "test_project")
+    result = backend.load_projects(tmp_path)
+    assert len(result) == 1
+    assert result[0].path == tmp_path / "projects" / "test_project"
+    assert result[0].id == "test_project"
+
+
+def test_remove_project_removes_from_list(tmp_path: Path) -> None:
+    """After removing a project, it is no longer in the list."""
+    project_root = backend.create_project(tmp_path, "to_remove")
+    backend.remove_project(tmp_path, project_root)
+    result = backend.load_projects(tmp_path)
+    assert len(result) == 0
+
+
+def test_validate_config_returns_tuple_of_three(tmp_path: Path) -> None:
+    """validate_config returns (is_valid, errors, warnings)."""
+    from src.modules.project.config_validation import ValidationResult
+
+    project_root = backend.create_project(tmp_path, "v")
+    with patch("src.gui.adapters.backend.validate_project_config") as m:
+        m.return_value = ValidationResult(is_valid=True, errors=[], warnings=[])
+        is_valid, errors, warnings = backend.validate_config(project_root, config_data={})
+    assert isinstance(is_valid, bool)
+    assert isinstance(errors, list)
+    assert isinstance(warnings, list)

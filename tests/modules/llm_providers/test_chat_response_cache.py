@@ -1,1 +1,126 @@
-"""Поле cache в LLMChatResponse и файловый кеш чата."""from __future__ import annotationsimport jsonfrom pathlib import Pathfrom unittest.mock import MagicMockimport pytestfrom src.modules.llm_providers.module import (    LLMProvidersConfig,    ModuleParams,    ModuleStore,)from src.modules.llm_providers.schemas.chat import (    LLMChatMessage,    LLMChatMessageText,    LLMChatRequest,    LLMChatResponse,    LLMChatRole,    LLMChatTokensUsage,)from src.modules.llm_providers.services.chat_request_cache import LLMChatRequestCachefrom src.modules.llm_providers.services.chat_serializer import _response_from_dictfrom src.modules.llm_providers.services.chat_serializer import _response_to_dict as response_to_dict@pytest.fixture(autouse=True)def _reset_llm_providers_store() -> None:    yield    ModuleStore.reset()def test_response_to_dict_roundtrip_cache_flag() -> None:    msg = LLMChatMessage(        role=LLMChatRole.ASSISTANT,        content=[LLMChatMessageText(message="hi")],    )    tu = LLMChatTokensUsage(prompt=1, reasoning=0, completion=2, total=3)    original = LLMChatResponse(        finish_reason="stop",        created=1,        message=msg,        tokens_usage=tu,        cache=False,    )    data = response_to_dict(original)    assert data["cache"] is False    back = _response_from_dict(data)    assert back.cache is False    data_no_key = {k: v for k, v in data.items() if k != "cache"}    legacy = _response_from_dict(data_no_key)    assert legacy.cache is Falsedef test_cache_get_sets_cache_true(tmp_path: Path) -> None:    """Ответ, прочитанный с диска, помечается cache=True."""    ModuleStore.setup(        ModuleParams(            providers=LLMProvidersConfig(),            response_logger=MagicMock(),            cache_path=tmp_path,        )    )    req = LLMChatRequest(        provider="p",        model="m",        messages=[            LLMChatMessage(                role=LLMChatRole.USER,                content=[LLMChatMessageText(message="x")],            )        ],    )    key = req.cache_key()    shard = tmp_path / key[:3]    shard.mkdir(parents=True, exist_ok=True)    file_path = shard / f"{key}.json"    payload = {        "finish_reason": "stop",        "created": 0,        "message": {            "role": "assistant",            "content": [{"type": "text", "text": "cached"}],        },        "message_reasoning": "",        "response_id": None,        "tokens_usage": {            "prompt": 10,            "reasoning": 0,            "completion": 5,            "total": 15,        },        "cache": False,    }    file_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")    got = LLMChatRequestCache.get(req)    assert got is not None    assert got.cache is True    assert got.message is not None
+"""LLMChatResponse.cache flag and file-backed chat cache."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from src.modules.llm_providers.module import (
+    LLMProvidersConfig,
+    ModuleParams,
+    ModuleStore,
+)
+from src.modules.llm_providers.schemas.chat import (
+    LLMChatMessage,
+    LLMChatMessageText,
+    LLMChatRequest,
+    LLMChatResponse,
+    LLMChatRole,
+    LLMChatTokensUsage,
+)
+from src.modules.llm_providers.services.chat_request_cache import LLMChatRequestCache
+from src.modules.llm_providers.services.chat_serializer import _response_from_dict
+from src.modules.llm_providers.services.chat_serializer import _response_to_dict as response_to_dict
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_providers_store() -> None:
+    yield
+    ModuleStore.reset()
+
+
+def test_cache_set_is_noop_when_cache_disabled() -> None:
+    ModuleStore.setup(
+        ModuleParams(
+            providers=LLMProvidersConfig(),
+            response_logger=MagicMock(),
+            cache_path=None,
+        )
+    )
+    assert LLMChatRequestCache.is_cache_available() is False
+    req = LLMChatRequest(
+        provider="p",
+        model="m",
+        messages=[
+            LLMChatMessage(
+                role=LLMChatRole.USER,
+                content=[LLMChatMessageText(message="x")],
+            )
+        ],
+    )
+    resp = LLMChatResponse(finish_reason="stop", created=0, cache=False)
+    LLMChatRequestCache.set(req, resp)
+
+
+def test_response_to_dict_roundtrip_cache_flag() -> None:
+    msg = LLMChatMessage(
+        role=LLMChatRole.ASSISTANT,
+        content=[LLMChatMessageText(message="hi")],
+    )
+    tu = LLMChatTokensUsage(prompt=1, reasoning=0, completion=2, total=3)
+    original = LLMChatResponse(
+        finish_reason="stop",
+        created=1,
+        message=msg,
+        tokens_usage=tu,
+        cache=False,
+    )
+    data = response_to_dict(original)
+    assert data["cache"] is False
+    back = _response_from_dict(data)
+    assert back.cache is False
+
+    data_no_key = {k: v for k, v in data.items() if k != "cache"}
+    legacy = _response_from_dict(data_no_key)
+    assert legacy.cache is False
+
+
+def test_cache_get_sets_cache_true(tmp_path: Path) -> None:
+    """Responses loaded from disk are marked cache=True."""
+    ModuleStore.setup(
+        ModuleParams(
+            providers=LLMProvidersConfig(),
+            response_logger=MagicMock(),
+            cache_path=tmp_path,
+        )
+    )
+    req = LLMChatRequest(
+        provider="p",
+        model="m",
+        messages=[
+            LLMChatMessage(
+                role=LLMChatRole.USER,
+                content=[LLMChatMessageText(message="x")],
+            )
+        ],
+    )
+    key = req.cache_key()
+    shard = tmp_path / key[:3]
+    shard.mkdir(parents=True, exist_ok=True)
+    file_path = shard / f"{key}.json"
+    payload = {
+        "finish_reason": "stop",
+        "created": 0,
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "cached"}],
+        },
+        "message_reasoning": "",
+        "response_id": None,
+        "tokens_usage": {
+            "prompt": 10,
+            "reasoning": 0,
+            "completion": 5,
+            "total": 15,
+        },
+        "cache": False,
+    }
+    file_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    got = LLMChatRequestCache.get(req)
+    assert got is not None
+    assert got.cache is True
+    assert got.message is not None
