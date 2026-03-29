@@ -1,15 +1,37 @@
 @echo off
-setlocal
-set "ROOT_DIR=%~dp0.."
-cd /d "%ROOT_DIR%" || exit /b 1
-set APP_PROFILE=prod
-call tools\win-build-locale.bat --no-pause
-if errorlevel 1 exit /b 1
+setlocal EnableExtensions
+REM Production run: locale build then main.py (APP_PROFILE=prod)
 
-echo Running (prod): runtime\prod
-uv run python main.py %*
+for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI"
+cd /d "%ROOT_DIR%"
 if errorlevel 1 (
-    echo Run failed
+    echo ERROR: cannot cd to project root:
+    echo   "%ROOT_DIR%"
     pause
     exit /b 1
 )
+
+set "APP_PROFILE=prod"
+call "%~dp0win-build-locale.bat" --no-pause
+if errorlevel 1 (
+    echo ERROR: locale build failed.
+    pause
+    exit /b 1
+)
+
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: uv not found in PATH.
+    pause
+    exit /b 1
+)
+
+echo Running (prod): "%ROOT_DIR%" APP_PROFILE=%APP_PROFILE%
+uv run python main.py %*
+if errorlevel 1 (
+    echo Run failed.
+    pause
+    exit /b 1
+)
+endlocal
+exit /b 0
