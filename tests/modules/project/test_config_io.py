@@ -40,13 +40,11 @@ def test_load_project_config_reads_existing_config(tmp_path: Path) -> None:
     data["extract"] = dict(data["extract"])
     data["extract"]["pdf_extract_provider"] = dict(data["extract"].get("pdf_extract_provider", {}))
     data["extract"]["pdf_extract_provider"]["algorithm"] = PdfExtractProvider.PDF_ALGORITHM_SKIP
-    data["extract"]["pdf_extract_provider"]["render_scale"] = "3"
     data["discovery"] = {"recursive_search": True}
     save_project_config(tmp_path, data)
     config = load_project_config(tmp_path)
     pdf_cfg = (config.extract or {}).get("pdf_extract_provider") or {}
     assert pdf_cfg.get("algorithm") == PdfExtractProvider.PDF_ALGORITHM_SKIP
-    assert pdf_cfg.get("render_scale") == "3"
     assert config.discovery.get("recursive_search") is True
 
 
@@ -145,13 +143,11 @@ def test_extract_payload_preserved_on_save_load(tmp_path: Path) -> None:
     data["extract"] = dict(data["extract"])
     data["extract"]["pdf_extract_provider"] = {
         "algorithm": PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT,
-        "render_scale": "4",
     }
     save_project_config_dict(tmp_path, data)
     loaded = load_project_config_dict(tmp_path)
     pdf = loaded["extract"].get("pdf_extract_provider", {})
     assert pdf.get("algorithm") == PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT
-    assert pdf.get("render_scale") == "4"
 
 
 def test_discovery_default_and_roundtrip(tmp_path: Path) -> None:
@@ -164,7 +160,6 @@ def test_discovery_default_and_roundtrip(tmp_path: Path) -> None:
             "extract": {
                 "pdf_extract_provider": {
                     "algorithm": PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT,
-                    "render_scale": "2",
                 }
             },
             "image_processing": {},

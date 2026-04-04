@@ -84,7 +84,6 @@ class FileExtractService:
             config,
             storage,
             document_hash=doc_hash,
-            cancel_event=cancel_event,
         )
         if cancel_event is not None and cancel_event.is_set():
             return None

@@ -16,10 +16,10 @@ def test_image_processing_logics_defaults_keys() -> None:
     D = IMAGE_PROCESSING_DEFAULTS
     K = IMAGE_PROCESSING_KEYS
     assert L.skip == "skip"
-    assert L.ocr_only == "ocr_only"
-    assert L.vision_only == "vision_only"
+    assert L.vision == "vision"
+    assert L.ocr == "ocr"
     assert len(L.options) == 3
-    assert L.valid_codes == frozenset({"skip", "ocr_only", "vision_only"})
+    assert L.valid_codes == frozenset({"skip", "vision", "ocr"})
     assert D.ocr_provider == "yandex_ocr"
     assert D.ocr_model == "page"
     assert D.vision_provider == ""
@@ -27,7 +27,7 @@ def test_image_processing_logics_defaults_keys() -> None:
     assert D.vision_reasoning == "disabled"
     assert D.vision_system_prompt == ""
     assert D.vision_temperature == 0.3
-    assert K.image_processing_logic == "image_processing_logic"
+    assert K.text_recognition == "text_recognition"
     assert K.ocr_provider == "ocr_provider"
     assert K.ocr_model == "ocr_model"
     assert K.vision_provider == "vision_provider"
@@ -43,7 +43,7 @@ def test_get_default_returns_full_dict() -> None:
 
     default = ImageProcessingConfig.get_default()
     assert isinstance(default, dict)
-    assert default[IMAGE_PROCESSING_KEYS.image_processing_logic] == IMAGE_PROCESSING_LOGICS.skip
+    assert default[IMAGE_PROCESSING_KEYS.text_recognition] == IMAGE_PROCESSING_LOGICS.skip
     assert default[IMAGE_PROCESSING_KEYS.ocr_provider] == IMAGE_PROCESSING_DEFAULTS.ocr_provider
     assert default[IMAGE_PROCESSING_KEYS.ocr_model] == IMAGE_PROCESSING_DEFAULTS.ocr_model
     assert default[IMAGE_PROCESSING_KEYS.vision_provider] == IMAGE_PROCESSING_DEFAULTS.vision_provider
@@ -59,7 +59,7 @@ def test_validate_valid_data_returns_empty_list() -> None:
 
     assert ImageProcessingConfig.validate(ImageProcessingConfig.get_default()) == []
     assert ImageProcessingConfig.validate({
-        IMAGE_PROCESSING_KEYS.image_processing_logic: IMAGE_PROCESSING_LOGICS.ocr_only,
+        IMAGE_PROCESSING_KEYS.text_recognition: IMAGE_PROCESSING_LOGICS.ocr,
         IMAGE_PROCESSING_KEYS.ocr_provider: IMAGE_PROCESSING_DEFAULTS.ocr_provider,
         IMAGE_PROCESSING_KEYS.ocr_model: IMAGE_PROCESSING_DEFAULTS.ocr_model,
         IMAGE_PROCESSING_KEYS.vision_provider: "",
@@ -77,13 +77,13 @@ def test_validate_non_dict_returns_error() -> None:
 
 
 def test_validate_invalid_logic_returns_error() -> None:
-    """Invalid image_processing_logic yields an error."""
+    """Invalid text_recognition yields an error."""
     from src.modules.project.sections import ImageProcessingConfig
 
-    errors = ImageProcessingConfig.validate({"image_processing_logic": "invalid_mode"})
+    errors = ImageProcessingConfig.validate({"text_recognition": "invalid_mode"})
     assert len(errors) == 1
-    assert "image_processing_logic" in errors[0]
-    assert "skip" in errors[0] or "ocr_only" in errors[0]
+    assert "text_recognition" in errors[0]
+    assert "skip" in errors[0] or "ocr" in errors[0]
 
 
 def test_validate_non_string_field_returns_error() -> None:
@@ -91,7 +91,7 @@ def test_validate_non_string_field_returns_error() -> None:
     from src.modules.project.sections import ImageProcessingConfig
 
     errors = ImageProcessingConfig.validate({
-        IMAGE_PROCESSING_KEYS.image_processing_logic: IMAGE_PROCESSING_LOGICS.skip,
+        IMAGE_PROCESSING_KEYS.text_recognition: IMAGE_PROCESSING_LOGICS.skip,
         IMAGE_PROCESSING_KEYS.ocr_provider: 123,
     })
     assert len(errors) >= 1
@@ -103,7 +103,7 @@ def test_validate_invalid_vision_reasoning_returns_error() -> None:
     from src.modules.project.sections import ImageProcessingConfig
 
     errors = ImageProcessingConfig.validate({
-        IMAGE_PROCESSING_KEYS.image_processing_logic: IMAGE_PROCESSING_LOGICS.vision_only,
+        IMAGE_PROCESSING_KEYS.text_recognition: IMAGE_PROCESSING_LOGICS.vision,
         IMAGE_PROCESSING_KEYS.vision_reasoning: "invalid",
     })
     assert len(errors) >= 1
@@ -115,14 +115,14 @@ def test_validate_invalid_vision_temperature_returns_error() -> None:
     from src.modules.project.sections import ImageProcessingConfig
 
     errors = ImageProcessingConfig.validate({
-        IMAGE_PROCESSING_KEYS.image_processing_logic: IMAGE_PROCESSING_LOGICS.vision_only,
+        IMAGE_PROCESSING_KEYS.text_recognition: IMAGE_PROCESSING_LOGICS.vision,
         IMAGE_PROCESSING_KEYS.vision_temperature: 3.0,
     })
     assert len(errors) >= 1
     assert any("vision_temperature" in e or "0.0" in e for e in errors)
 
     errors2 = ImageProcessingConfig.validate({
-        IMAGE_PROCESSING_KEYS.image_processing_logic: IMAGE_PROCESSING_LOGICS.vision_only,
+        IMAGE_PROCESSING_KEYS.text_recognition: IMAGE_PROCESSING_LOGICS.vision,
         IMAGE_PROCESSING_KEYS.vision_temperature: "x",
     })
     assert len(errors2) >= 1
@@ -132,7 +132,7 @@ def test_validate_invalid_vision_temperature_returns_error() -> None:
 @patch("src.modules.project.sections.image_processing_config.locmsg", side_effect=lambda msgid: msgid)
 @patch("src.modules.project.sections.image_processing_config.AppConfigStore.get")
 @patch("src.modules.llm_models_registry.LLMModelManager")
-def test_get_available_values_vision_only_input_image_models(
+def test_get_available_values_vision_input_image_models(
     mock_manager_class: object,
     mock_app_config_get: object,
     _mock_locmsg: object,

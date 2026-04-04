@@ -3,10 +3,24 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from src.core import AppConfigStore
+from src.core.app_locale import AppLocaleStore, set_available_languages, set_language
 from src.modules.file_extract import get_default_extract_payload
 from src.modules.file_extract.providers import PdfExtractProvider
 from src.modules.project import load_project_config, validate_project_config
 from src.modules.project.project_config import ProjectConfig
+
+
+@pytest.fixture(autouse=True)
+def _locale_bootstrap(tmp_path: Path) -> None:
+    """validate_project_config loads image_processing options via locmsg()."""
+    AppConfigStore.reset()
+    AppConfigStore.load_or_create(tmp_path)
+    set_available_languages({"ru": "Русский", "en": "English", "zh": "中文"})
+    AppLocaleStore.reset()
+    set_language("en")
 
 
 def _canonical_config(extract_overrides=None, discovery_overrides=None, pipeline_overrides=None):
@@ -55,7 +69,6 @@ def test_config_discovery_and_extract_loaded(tmp_path):
         extract_overrides={
             "pdf_extract_provider": {
                 "algorithm": PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT,
-                "render_scale": "3",
             },
         },
     )
@@ -64,7 +77,6 @@ def test_config_discovery_and_extract_loaded(tmp_path):
     assert cfg.discovery.get("recursive_search") is False
     pdf = (cfg.extract or {}).get("pdf_extract_provider") or {}
     assert pdf.get("algorithm") == PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT
-    assert pdf.get("render_scale") == "3"
 
 
 def test_validate_project_config_rejects_unknown_extract_group_codes(tmp_path):
@@ -84,14 +96,18 @@ def test_validate_project_config_rejects_unknown_extract_group_codes(tmp_path):
     assert any("Extract:" in e and ("unknown" in e or "group" in e.lower()) for e in result.errors)
 
 
-def test_validate_project_config_rejects_invalid_extract_field_value(tmp_path):
-    """Validator rejects invalid extract field values (e.g. negative int in pdf group)."""
+def test_validate_project_config_normalizes_extract_dropping_unknown_pdf_keys(tmp_path):
+    """Normalize extract before validate: unknown pdf keys are ignored; schema values stay valid."""
     (tmp_path / "config.json").write_text(
         json.dumps({
             "project": {},
             "discovery": {"recursive_search": False},
             "extract": {
-                "pdf_extract_provider": {"enabled": True, "mode": PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT, "min_text_length": -1},
+                "pdf_extract_provider": {
+                    "enabled": True,
+                    "mode": PdfExtractProvider.PDF_EXTRACT_MODE_ONLY_TEXT,
+                    "min_text_length": -1,
+                },
             },
             "image_processing": {},
             "pipeline": {},
@@ -99,5 +115,4 @@ def test_validate_project_config_rejects_invalid_extract_field_value(tmp_path):
         encoding="utf-8",
     )
     result = validate_project_config(tmp_path, check_tokens=False)
-    assert result.is_valid is False
-    assert any("Extract:" in e for e in result.errors)
+    assert result.is_valid is True

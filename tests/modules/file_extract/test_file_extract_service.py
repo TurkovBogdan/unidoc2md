@@ -1,10 +1,8 @@
-"""Tests for FileExtractService: get_supported_extensions, extract, cache, missing provider."""
+"""Tests for FileExtractService: extract, cache, missing provider."""
 
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 from src.modules.file_extract import (
     ExtractConfig,
@@ -23,34 +21,19 @@ _PAYLOAD_PDF_SKIP = {
 _PAYLOAD_PDF_IMAGES_ALWAYS = {
     "pdf_extract_provider": {
         "algorithm": PdfExtractProvider.PDF_EXTRACT_MODE_IMAGES_ALWAYS,
-        "render_scale": "2",
     },
 }
 
 
-def test_get_supported_extensions():
-    exts = FileExtractService.get_supported_extensions()
-    assert isinstance(exts, set)
-    assert ".pdf" in exts
-    assert ".txt" in exts
-
-
-def test_extract_pdf_returns_content(tmp_path: Path):
-    try:
-        import fitz
-    except ImportError:
-        pytest.skip("PyMuPDF not installed")
-    pdf_path = tmp_path / "doc.pdf"
-    doc = fitz.open()
-    doc.new_page()
-    doc.save(pdf_path)
-    doc.close()
+def test_extract_pdf_returns_content(tmp_path: Path, sample_data_dir: Path):
+    pdf_path = sample_data_dir / "pdf" / "simple-text.pdf"
+    assert pdf_path.is_file()
     service = FileExtractService()
     config = build_extract_config(tmp_path, _PAYLOAD_PDF_IMAGES_ALWAYS)
     source = SourceDocument(
         path=str(pdf_path),
         folder=".",
-        filename="doc.pdf",
+        filename=pdf_path.name,
         extension=".pdf",
         mime_type="application/pdf",
         file_hash=None,
@@ -78,23 +61,16 @@ def test_extract_unknown_extension_returns_none(tmp_path: Path):
     assert result is None
 
 
-def test_extract_pdf_algorithm_skip_returns_empty_content(tmp_path: Path):
+def test_extract_pdf_algorithm_skip_returns_empty_content(tmp_path: Path, sample_data_dir: Path):
     """With algorithm=skip, provider returns a document with empty content."""
-    try:
-        import fitz
-    except ImportError:
-        pytest.skip("PyMuPDF not installed")
-    pdf_path = tmp_path / "doc.pdf"
-    doc = fitz.open()
-    doc.new_page()
-    doc.save(pdf_path)
-    doc.close()
+    pdf_path = sample_data_dir / "pdf" / "simple-text.pdf"
+    assert pdf_path.is_file()
     service = FileExtractService()
     config = build_extract_config(tmp_path, _PAYLOAD_PDF_SKIP)
     source = SourceDocument(
         path=str(pdf_path),
         folder=".",
-        filename="doc.pdf",
+        filename=pdf_path.name,
         extension=".pdf",
         mime_type="application/pdf",
         file_hash=None,
@@ -105,22 +81,15 @@ def test_extract_pdf_algorithm_skip_returns_empty_content(tmp_path: Path):
     assert len(result.content) == 0
 
 
-def test_extract_extension_normalized_without_dot(tmp_path: Path):
-    try:
-        import fitz
-    except ImportError:
-        pytest.skip("PyMuPDF not installed")
-    pdf_path = tmp_path / "doc.pdf"
-    doc = fitz.open()
-    doc.new_page()
-    doc.save(pdf_path)
-    doc.close()
+def test_extract_extension_normalized_without_dot(tmp_path: Path, sample_data_dir: Path):
+    pdf_path = sample_data_dir / "pdf" / "simple-text.pdf"
+    assert pdf_path.is_file()
     service = FileExtractService()
     config = build_extract_config(tmp_path, _PAYLOAD_PDF_IMAGES_ALWAYS)
     source = SourceDocument(
         path=str(pdf_path),
         folder=".",
-        filename="doc.pdf",
+        filename=pdf_path.name,
         extension="pdf",
         mime_type=None,
         file_hash=None,
@@ -130,23 +99,16 @@ def test_extract_extension_normalized_without_dot(tmp_path: Path):
     assert result.source.extension in (".pdf", "pdf")
 
 
-def test_extract_cache_hit_returns_cached(tmp_path: Path):
+def test_extract_cache_hit_returns_cached(tmp_path: Path, sample_data_dir: Path):
     """A second call for the same document returns the same extract_hash."""
-    try:
-        import fitz
-    except ImportError:
-        pytest.skip("PyMuPDF not installed")
-    pdf_path = tmp_path / "doc.pdf"
-    doc = fitz.open()
-    doc.new_page()
-    doc.save(pdf_path)
-    doc.close()
+    pdf_path = sample_data_dir / "pdf" / "simple-text.pdf"
+    assert pdf_path.is_file()
     service = FileExtractService()
     config = ExtractConfig(project_path=tmp_path)
     source = SourceDocument(
         path=str(pdf_path),
         folder=".",
-        filename="doc.pdf",
+        filename=pdf_path.name,
         extension=".pdf",
         mime_type="application/pdf",
         file_hash="h1",

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 
 from src.modules.file_discovery.models import DiscoveredDocument
@@ -20,7 +19,7 @@ from src.modules.settings_schema.models import SettingFieldSchema
 
 
 TEXT_ALGORITHM_SKIP = "skip"
-TEXT_ALGORITHM_PROCESS = "process"
+TEXT_ALGORITHM_ONLY_TEXT = "only_text"
 
 
 class TextExtractProvider(FileExtractProvider):
@@ -38,12 +37,12 @@ class TextExtractProvider(FileExtractProvider):
             SettingFieldSchema(
                 key="algorithm",
                 type="select",
-                default=TEXT_ALGORITHM_PROCESS,
+                default=TEXT_ALGORITHM_ONLY_TEXT,
                 label="algorithm",
                 description="",
                 options=(
                     (TEXT_ALGORITHM_SKIP, TEXT_ALGORITHM_SKIP),
-                    (TEXT_ALGORITHM_PROCESS, TEXT_ALGORITHM_PROCESS),
+                    (TEXT_ALGORITHM_ONLY_TEXT, TEXT_ALGORITHM_ONLY_TEXT),
                 ),
             ),
         )
@@ -54,23 +53,8 @@ class TextExtractProvider(FileExtractProvider):
         config: ExtractConfig,
         storage: FileExtractCacheService,
         document_hash: str,
-        cancel_event: threading.Event | None = None,
     ) -> ExtractedDocument:
-        if cancel_event is not None and cancel_event.is_set():
-            return ExtractedDocument(
-                source=DiscoveredDocument(
-                    path=str(source.path),
-                    folder=source.folder,
-                    filename=source.filename,
-                    extension=source.normalized_extension(),
-                    mime_type=source.mime_type,
-                    hash=source.file_hash,
-                ),
-                config=config,
-                extract_hash=document_hash,
-                content=[],
-            )
-        algorithm = (self.get_setting(config, "algorithm") or TEXT_ALGORITHM_PROCESS).strip().lower()
+        algorithm = (self.get_setting(config, "algorithm") or TEXT_ALGORITHM_ONLY_TEXT).strip().lower()
         if algorithm == TEXT_ALGORITHM_SKIP:
             return ExtractedDocument(
                 source=DiscoveredDocument(

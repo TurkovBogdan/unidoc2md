@@ -135,8 +135,8 @@ def test_run_image_processing_stage_processes_each_image_item(
         fake_run_parallel,
     )
     config = ProjectConfig.create_default(tmp_path)
-    config.image_processing["image_processing_logic"] = (
-        ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only
+    config.image_processing["text_recognition"] = (
+        ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr
     )
     config.pipeline[KEY_IMAGE_PROCESSING_THREADS] = 2
     extract_config = build_extract_config(
@@ -218,9 +218,9 @@ def test_run_image_processing_stage_processes_each_image_item(
     assert out[1].content[0].content_type == "text"
     assert out[1].content[1].content_type == "text"
     assert any("queue 4 images" in line for line in sink_calls)
-    assert any("logic=ocr_only" in line for line in sink_calls)
+    assert any("logic=ocr" in line for line in sink_calls)
     assert result.payload and isinstance(result.payload[0], dict)
-    assert result.payload[0].get("logic") == "ocr_only"
+    assert result.payload[0].get("logic") == "ocr"
     ocr_vis = result.payload[0].get("vision")
     assert isinstance(ocr_vis, dict)
     assert ocr_vis.get("billing") == "ocr"
@@ -229,12 +229,12 @@ def test_run_image_processing_stage_processes_each_image_item(
 
 
 def test_image_processing_stage_uses_worker_limit_from_config(tmp_path: Path) -> None:
-    """ImageProcessingStage with ocr_only returns get_max_workers=1."""
+    """ImageProcessingStage with OCR mode returns get_max_workers=1."""
     from src.modules.project_pipeline.stages import ImageProcessingStage
 
     config = ProjectConfig.create_default(tmp_path)
-    config.image_processing["image_processing_logic"] = (
-        ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only
+    config.image_processing["text_recognition"] = (
+        ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr
     )
     stage = ImageProcessingStage()
     assert stage._get_max_workers(config) == 1

@@ -1,1 +1,134 @@
-from __future__ import annotationsimport base64import threadingfrom pathlib import Pathfrom xml.etree import ElementTree as ETfrom zipfile import ZipFilefrom ....models import ExtractedDocumentContentfrom ....services.file_extract_cache import FileExtractCacheServicefrom .image_pipeline import OfficeImagePipeline_ODT_NS = {    "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",    "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",    "draw": "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0",    "xlink": "http://www.w3.org/1999/xlink",}def extract_odt(    path: Path,    storage: FileExtractCacheService,    pipeline: OfficeImagePipeline,    out: list[ExtractedDocumentContent],    flush_text,    cancel_event: threading.Event | None,) -> None:    images = _odt_images(path)    text_buffer: list[str] = []    text_index = 0    stem = pipeline.stem    for token_type, value in _iter_odt_tokens(path):        if cancel_event is not None and cancel_event.is_set():            break        if token_type == "text":            text_buffer.append(value)            continue        text_index = flush_text(text_buffer, stem, text_index, storage, out)        img_blob: bytes | None = None        source_ext = ".bin"        if token_type == "image":            normalized_href = _normalize_odt_href(value)            img_blob = images.get(normalized_href)            source_ext = Path(normalized_href).suffix.lower() or ".bin"        elif token_type == "image_inline":            img_blob = _decode_odt_inline_image(value)            source_ext = ".png"        if not img_blob:            continue        item = pipeline.save(img_blob, source_ext)        if item is not None:            out.append(item)    flush_text(text_buffer, stem, text_index, storage, out)def _odt_images(path: Path) -> dict[str, bytes]:    images: dict[str, bytes] = {}    with ZipFile(path) as zf:        names = set(zf.namelist())        manifest_path = "META-INF/manifest.xml"        if manifest_path in names:            try:                root = ET.fromstring(zf.read(manifest_path))                ns = {"manifest": "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"}                for entry in root.findall(".//manifest:file-entry", ns):                    media_type = (entry.attrib.get("{urn:oasis:names:tc:opendocument:xmlns:manifest:1.0}media-type") or "").lower()                    full_path = entry.attrib.get("{urn:oasis:names:tc:opendocument:xmlns:manifest:1.0}full-path") or ""                    if not media_type.startswith("image/"):                        continue                    normalized = _normalize_odt_href(full_path)                    if normalized and normalized in names:                        images[normalized] = zf.read(normalized)            except ET.ParseError:                pass        for name in names:            lowered = name.lower()            if lowered.startswith("pictures/") or lowered.startswith("media/"):                if name not in images:                    data = zf.read(name)                    images[name] = data                    images[_normalize_odt_href(name)] = data    return imagesdef _normalize_odt_href(href: str) -> str:    value = (href or "").strip().replace("\\", "/")    while value.startswith("./"):        value = value[2:]    if value.startswith("/"):        value = value[1:]    if "#" in value:        value = value.split("#", 1)[0]    return valuedef _iter_odt_tokens(path: Path) -> list[tuple[str, str]]:    with ZipFile(path) as zf:        root = ET.fromstring(zf.read("content.xml"))    result: list[tuple[str, str]] = []    for node in root.iter():        tag = node.tag        if tag == f"{{{_ODT_NS['text']}}}s":            count = int(node.attrib.get(f"{{{_ODT_NS['text']}}}c", "1"))            result.append(("text", " " * max(1, count)))        elif tag == f"{{{_ODT_NS['text']}}}tab":            result.append(("text", "\t"))        elif tag == f"{{{_ODT_NS['text']}}}line-break":            result.append(("text", "\n"))        elif tag in (f"{{{_ODT_NS['text']}}}p", f"{{{_ODT_NS['text']}}}h", f"{{{_ODT_NS['text']}}}list-item"):            if node.text:                result.append(("text", node.text))            result.append(("text", "\n"))        elif tag == f"{{{_ODT_NS['draw']}}}image":            href = node.attrib.get(f"{{{_ODT_NS['xlink']}}}href")            if href:                result.append(("image", href))            else:                binary_node = node.find(f"{{{_ODT_NS['office']}}}binary-data")                if binary_node is not None and (binary_node.text or "").strip():                    result.append(("image_inline", binary_node.text or ""))        else:            if node.text and tag.startswith(f"{{{_ODT_NS['text']}}}"):                result.append(("text", node.text))        if node.tail:            result.append(("text", node.tail))    return resultdef _decode_odt_inline_image(value: str) -> bytes | None:    payload = "".join((value or "").split())    if not payload:        return None    try:        return base64.b64decode(payload, validate=False)    except (ValueError, TypeError):        return None
+from __future__ import annotations
+
+import base64
+from pathlib import Path
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
+
+from ....models import ExtractedDocumentContent
+from ....services.file_extract_cache import FileExtractCacheService
+from .image_pipeline import OfficeImagePipeline
+
+_ODT_NS = {
+    "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
+    "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
+    "draw": "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0",
+    "xlink": "http://www.w3.org/1999/xlink",
+}
+
+
+def extract_odt(
+    path: Path,
+    storage: FileExtractCacheService,
+    pipeline: OfficeImagePipeline,
+    out: list[ExtractedDocumentContent],
+    flush_text,
+) -> None:
+    images = _odt_images(path)
+    text_buffer: list[str] = []
+    text_index = 0
+    stem = pipeline.stem
+
+    for token_type, value in _iter_odt_tokens(path):
+        if token_type == "text":
+            text_buffer.append(value)
+            continue
+        text_index = flush_text(text_buffer, stem, text_index, storage, out)
+        img_blob: bytes | None = None
+        source_ext = ".bin"
+        if token_type == "image":
+            normalized_href = _normalize_odt_href(value)
+            img_blob = images.get(normalized_href)
+            source_ext = Path(normalized_href).suffix.lower() or ".bin"
+        elif token_type == "image_inline":
+            img_blob = _decode_odt_inline_image(value)
+            source_ext = ".png"
+        if not img_blob:
+            continue
+        item = pipeline.save(img_blob, source_ext)
+        if item is not None:
+            out.append(item)
+    flush_text(text_buffer, stem, text_index, storage, out)
+
+
+def _odt_images(path: Path) -> dict[str, bytes]:
+    images: dict[str, bytes] = {}
+    with ZipFile(path) as zf:
+        names = set(zf.namelist())
+        manifest_path = "META-INF/manifest.xml"
+        if manifest_path in names:
+            try:
+                root = ET.fromstring(zf.read(manifest_path))
+                ns = {"manifest": "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"}
+                for entry in root.findall(".//manifest:file-entry", ns):
+                    media_type = (entry.attrib.get("{urn:oasis:names:tc:opendocument:xmlns:manifest:1.0}media-type") or "").lower()
+                    full_path = entry.attrib.get("{urn:oasis:names:tc:opendocument:xmlns:manifest:1.0}full-path") or ""
+                    if not media_type.startswith("image/"):
+                        continue
+                    normalized = _normalize_odt_href(full_path)
+                    if normalized and normalized in names:
+                        images[normalized] = zf.read(normalized)
+            except ET.ParseError:
+                pass
+        for name in names:
+            lowered = name.lower()
+            if lowered.startswith("pictures/") or lowered.startswith("media/"):
+                if name not in images:
+                    data = zf.read(name)
+                    images[name] = data
+                    images[_normalize_odt_href(name)] = data
+    return images
+
+
+def _normalize_odt_href(href: str) -> str:
+    value = (href or "").strip().replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    if value.startswith("/"):
+        value = value[1:]
+    if "#" in value:
+        value = value.split("#", 1)[0]
+    return value
+
+
+def _iter_odt_tokens(path: Path) -> list[tuple[str, str]]:
+    with ZipFile(path) as zf:
+        root = ET.fromstring(zf.read("content.xml"))
+    result: list[tuple[str, str]] = []
+    for node in root.iter():
+        tag = node.tag
+        if tag == f"{{{_ODT_NS['text']}}}s":
+            count = int(node.attrib.get(f"{{{_ODT_NS['text']}}}c", "1"))
+            result.append(("text", " " * max(1, count)))
+        elif tag == f"{{{_ODT_NS['text']}}}tab":
+            result.append(("text", "\t"))
+        elif tag == f"{{{_ODT_NS['text']}}}line-break":
+            result.append(("text", "\n"))
+        elif tag in (f"{{{_ODT_NS['text']}}}p", f"{{{_ODT_NS['text']}}}h", f"{{{_ODT_NS['text']}}}list-item"):
+            if node.text:
+                result.append(("text", node.text))
+            result.append(("text", "\n"))
+        elif tag == f"{{{_ODT_NS['draw']}}}image":
+            href = node.attrib.get(f"{{{_ODT_NS['xlink']}}}href")
+            if href:
+                result.append(("image", href))
+            else:
+                binary_node = node.find(f"{{{_ODT_NS['office']}}}binary-data")
+                if binary_node is not None and (binary_node.text or "").strip():
+                    result.append(("image_inline", binary_node.text or ""))
+        else:
+            if node.text and tag.startswith(f"{{{_ODT_NS['text']}}}"):
+                result.append(("text", node.text))
+        if node.tail:
+            result.append(("text", node.tail))
+    return result
+
+
+def _decode_odt_inline_image(value: str) -> bytes | None:
+    payload = "".join((value or "").split())
+    if not payload:
+        return None
+    try:
+        return base64.b64decode(payload, validate=False)
+    except (ValueError, TypeError):
+        return None

@@ -1,8 +1,6 @@
 """Base document extract provider: supported_extensions and extract."""
 
 from __future__ import annotations
-
-import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -59,7 +57,6 @@ class FileExtractProvider(ABC):
         config: "ExtractConfig",
         storage: "FileExtractCacheService",
         document_hash: str,
-        cancel_event: threading.Event | None = None,
     ) -> ExtractedDocument:
         """Extract document content; persist artifacts via storage when needed."""
         ...
