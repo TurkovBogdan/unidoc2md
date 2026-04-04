@@ -54,7 +54,6 @@ class BaseProviderClient(ABC):
 
     PROVIDER_CODE: str = ""
     BASE_URL: str = ""
-    TIMEOUT: float = 30.0
     ROLE_MAP: dict[LLMChatRole, str] = {}
     REASONING_EFFORT_MAP: dict[LLMChatReasoningEffort, str] = {}
     THINKING_BUDGET_MAP: dict[LLMChatReasoningEffort, int] = {}
@@ -70,7 +69,9 @@ class BaseProviderClient(ABC):
             ModuleStore.get().response_logger if response_logger is None else response_logger
         )
         self._headers = self._build_headers()
-        self._timeout = float(config.gateway_timeout or 30)
+        connect = float(config.gateway_connect_timeout or 30)
+        read = float(config.gateway_read_timeout or 600)
+        self._timeout: float | tuple[float, float] = (connect, read)
 
     def _request_base_url(self) -> str:
         """Base URL for HTTP requests; override when URL comes from config (e.g. local LM Studio)."""
@@ -242,6 +243,7 @@ class BaseProviderClient(ABC):
             req = urllib.request.Request(url, headers=merged_headers, method=method.upper())
         ctx = ssl.create_default_context()
         try:
+            # timeout=(connect, read): connect = до установки TCP/TLS; read = до конца тела ответа
             with urllib.request.urlopen(req, timeout=self._timeout, context=ctx) as resp:
                 raw_body = resp.read().decode("utf-8")
                 status_code = resp.getcode()

@@ -6,7 +6,7 @@ Stages (e.g. tagging) may log full LLM system prompts at DEBUG via get().debug(.
 from __future__ import annotations
 
 from src.app_path import AppPath
-from src.core.logger.log_levels import DEBUG
+from src.core.logger.log_levels import DEFAULT_LEVEL
 from src.core.logger.system_logger import SystemLogger
 
 
@@ -17,13 +17,13 @@ class SystemLoggerStore:
 
     @classmethod
     def get(cls) -> SystemLogger:
-        """Return the current system logger; if unset, create with default paths and DEBUG level."""
+        """Return the current system logger; if unset, create with default paths and default level."""
         if cls._current is None:
             paths = AppPath.from_root()
             cls._current = SystemLogger(
                 logs_dir=paths.logs_dir,
                 file_name="system",
-                level=DEBUG,
+                level=DEFAULT_LEVEL,
             )
         return cls._current
 

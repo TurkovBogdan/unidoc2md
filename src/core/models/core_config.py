@@ -10,6 +10,6 @@ class CoreConfig:
     """The ``[CORE]`` section of ``app.ini``."""
 
     debug: bool = False
-    log_level: str = field(default="DEBUG", metadata={"ini_key": "LEVEL"})
-    console_log_level: str = field(default="INFO", metadata={"ini_key": "CONSOLE_LEVEL"})
+    log_level: str = field(default="ERROR", metadata={"ini_key": "LEVEL"})
+    console_log_level: str = field(default="ERROR", metadata={"ini_key": "CONSOLE_LEVEL"})
     language: str = field(default="", metadata={"ini_key": "LANGUAGE"})

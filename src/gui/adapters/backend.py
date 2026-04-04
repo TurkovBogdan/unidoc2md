@@ -94,7 +94,8 @@ def load_app_config_dict() -> dict[str, Any]:
             "language": (cfg.core.language or "").strip(),
         },
         "llm_providers": {
-            "gateway_timeout": getattr(lp, "gateway_timeout", 30),
+            "gateway_connect_timeout": getattr(lp, "gateway_connect_timeout", 30),
+            "gateway_read_timeout": getattr(lp, "gateway_read_timeout", 600),
             "anthropic_provider_enabled": lp.anthropic_provider_enabled,
             "anthropic_api_key": lp.anthropic_api_key or "",
             "google_provider_enabled": lp.google_provider_enabled,
@@ -117,13 +118,12 @@ def load_app_config_dict() -> dict[str, Any]:
     }
 
 
-def _gateway_timeout_from_lp(lp: dict[str, Any]) -> int:
-    """Parse ``gateway_timeout`` from the ``llm_providers`` dict (clamped 1–600, default 30)."""
+def _llm_int_clamped(lp: dict[str, Any], key: str, default: int, lo: int, hi: int) -> int:
     try:
-        val = int(lp.get("gateway_timeout", 30))
+        val = int(lp.get(key, default))
     except (TypeError, ValueError):
-        val = 30
-    return max(1, min(600, val))
+        val = default
+    return max(lo, min(hi, val))
 
 
 def save_app_config_dict(data: dict[str, Any], *, app_root: Path | None = None) -> None:
@@ -147,7 +147,8 @@ def save_app_config_dict(data: dict[str, Any], *, app_root: Path | None = None) 
             language=lang_stored,
         ),
         llm_providers=LLMProvidersConfig(
-            gateway_timeout=_gateway_timeout_from_lp(lp),
+            gateway_connect_timeout=_llm_int_clamped(lp, "gateway_connect_timeout", 30, 1, 120),
+            gateway_read_timeout=_llm_int_clamped(lp, "gateway_read_timeout", 600, 60, 7200),
             anthropic_provider_enabled=bool(lp.get("anthropic_provider_enabled", False)),
             anthropic_api_key=str(lp.get("anthropic_api_key", "")),
             google_provider_enabled=bool(lp.get("google_provider_enabled", False)),

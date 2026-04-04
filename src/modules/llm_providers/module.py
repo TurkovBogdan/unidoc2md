@@ -33,7 +33,8 @@ class LLMProvidersConfig:
     lmstudio_port: str = ""
     lmstudio_ssl: bool = False
     lmstudio_api_key: str = ""
-    gateway_timeout: int = 30
+    gateway_connect_timeout: int = 30
+    gateway_read_timeout: int = 600
 
     def is_provider_available(self, provider_code: str) -> bool:
         """True if provider is enabled in config and has API key (or key not required)."""

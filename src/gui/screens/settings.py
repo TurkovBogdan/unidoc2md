@@ -41,7 +41,8 @@ from src.gui.template.styles import (
 )
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-GATEWAY_TIMEOUT_MIN, GATEWAY_TIMEOUT_MAX = 1, 600
+GATEWAY_CONNECT_TIMEOUT_MIN, GATEWAY_CONNECT_TIMEOUT_MAX = 1, 120
+GATEWAY_READ_TIMEOUT_MIN, GATEWAY_READ_TIMEOUT_MAX = 60, 7200
 
 def _application_debug_select_values() -> tuple[str, str]:
     return (locmsg("gui.off"), locmsg("gui.on"))
@@ -547,34 +548,63 @@ class SettingsScreen(BaseGUIScreen):
         wrap_px = cfg["container_width_px"]
         block = SettingsBlock(form_parent)
 
-        gw_row = block.add_field_row_frame()
-        gateway_var = tk.StringVar(value="30")
-        self._vars["llm_providers.gateway_timeout"] = gateway_var
-        gw_lbl = gui_element_input_label(
-            gw_row,
-            locmsg("settings.llm.label.gateway_timeout"),
+        gwc_row = block.add_field_row_frame()
+        gateway_connect_var = tk.StringVar(value="30")
+        self._vars["llm_providers.gateway_connect_timeout"] = gateway_connect_var
+        gwc_lbl = gui_element_input_label(
+            gwc_row,
+            locmsg("settings.llm.label.gateway_connect_timeout"),
             wraplength=cfg["column_label_px"],
         )
         block.finish_field_row(
-            gw_row,
-            gw_lbl,
+            gwc_row,
+            gwc_lbl,
             gui_element_input_spin(
-                gw_row,
-                textvariable=gateway_var,
-                from_=GATEWAY_TIMEOUT_MIN,
-                to=GATEWAY_TIMEOUT_MAX,
+                gwc_row,
+                textvariable=gateway_connect_var,
+                from_=GATEWAY_CONNECT_TIMEOUT_MIN,
+                to=GATEWAY_CONNECT_TIMEOUT_MAX,
                 width=6,
             ),
         )
-        gw_desc = gui_element_input_description(
+        gwc_desc = gui_element_input_description(
             block.form,
-            locmsg("settings.llm.desc.gateway_timeout"),
+            locmsg("settings.llm.desc.gateway_connect_timeout"),
             wraplength=wrap_px,
         )
-        block.add_comment(gw_desc)
-        self._llm_form_locale_refs["label_gateway_timeout"] = gw_lbl
-        if gw_desc is not None:
-            self._llm_form_locale_refs["desc_gateway_timeout"] = gw_desc
+        block.add_comment(gwc_desc)
+        self._llm_form_locale_refs["label_gateway_connect_timeout"] = gwc_lbl
+        if gwc_desc is not None:
+            self._llm_form_locale_refs["desc_gateway_connect_timeout"] = gwc_desc
+
+        gwr_row = block.add_field_row_frame()
+        gateway_read_var = tk.StringVar(value="600")
+        self._vars["llm_providers.gateway_read_timeout"] = gateway_read_var
+        gwr_lbl = gui_element_input_label(
+            gwr_row,
+            locmsg("settings.llm.label.gateway_read_timeout"),
+            wraplength=cfg["column_label_px"],
+        )
+        block.finish_field_row(
+            gwr_row,
+            gwr_lbl,
+            gui_element_input_spin(
+                gwr_row,
+                textvariable=gateway_read_var,
+                from_=GATEWAY_READ_TIMEOUT_MIN,
+                to=GATEWAY_READ_TIMEOUT_MAX,
+                width=6,
+            ),
+        )
+        gwr_desc = gui_element_input_description(
+            block.form,
+            locmsg("settings.llm.desc.gateway_read_timeout"),
+            wraplength=wrap_px,
+        )
+        block.add_comment(gwr_desc)
+        self._llm_form_locale_refs["label_gateway_read_timeout"] = gwr_lbl
+        if gwr_desc is not None:
+            self._llm_form_locale_refs["desc_gateway_read_timeout"] = gwr_desc
         block.add_full_width_row(gui_element_separator(block.form))
 
         for idx, (pid, title, keys) in enumerate(LLM_PROVIDER_SECTIONS):
@@ -667,8 +697,10 @@ class SettingsScreen(BaseGUIScreen):
                 field = key.split(".", 1)[1]
                 if field.endswith("_provider_enabled"):
                     var.set(prov_on if lp.get(field, False) else prov_off)
-                elif field == "gateway_timeout":
+                elif field == "gateway_connect_timeout":
                     var.set(str(lp.get(field, 30)))
+                elif field == "gateway_read_timeout":
+                    var.set(str(lp.get(field, 600)))
                 elif field == "lmstudio_ssl":
                     off, on = _application_debug_select_values()
                     var.set(on if lp.get("lmstudio_ssl", False) else off)
@@ -704,12 +736,20 @@ class SettingsScreen(BaseGUIScreen):
                 field = key.split(".", 1)[1]
                 if field.endswith("_provider_enabled"):
                     lp[field] = var.get() == locmsg("gui.enabled")
-                elif field == "gateway_timeout":
+                elif field == "gateway_connect_timeout":
                     try:
                         val = int(var.get() if isinstance(var, tk.StringVar) else 30)
                     except (TypeError, ValueError):
                         val = 30
-                    lp[field] = max(GATEWAY_TIMEOUT_MIN, min(GATEWAY_TIMEOUT_MAX, val))
+                    lp[field] = max(
+                        GATEWAY_CONNECT_TIMEOUT_MIN, min(GATEWAY_CONNECT_TIMEOUT_MAX, val)
+                    )
+                elif field == "gateway_read_timeout":
+                    try:
+                        val = int(var.get() if isinstance(var, tk.StringVar) else 600)
+                    except (TypeError, ValueError):
+                        val = 600
+                    lp[field] = max(GATEWAY_READ_TIMEOUT_MIN, min(GATEWAY_READ_TIMEOUT_MAX, val))
                 elif field == "lmstudio_ssl":
                     _off, on = _application_debug_select_values()
                     lp[field] = var.get() == on
@@ -800,12 +840,18 @@ class SettingsScreen(BaseGUIScreen):
                 at.insert(tk.END, locmsg(article_key))
                 at.configure(state=tk.DISABLED)
 
-        gw_lbl = self._llm_form_locale_refs.get("label_gateway_timeout")
-        if gw_lbl is not None:
-            gw_lbl.configure(text=locmsg("settings.llm.label.gateway_timeout"))
-        gw_desc = self._llm_form_locale_refs.get("desc_gateway_timeout")
-        if gw_desc is not None:
-            gw_desc.configure(text=locmsg("settings.llm.desc.gateway_timeout"))
+        gwc_lbl = self._llm_form_locale_refs.get("label_gateway_connect_timeout")
+        if gwc_lbl is not None:
+            gwc_lbl.configure(text=locmsg("settings.llm.label.gateway_connect_timeout"))
+        gwc_desc = self._llm_form_locale_refs.get("desc_gateway_connect_timeout")
+        if gwc_desc is not None:
+            gwc_desc.configure(text=locmsg("settings.llm.desc.gateway_connect_timeout"))
+        gwr_lbl = self._llm_form_locale_refs.get("label_gateway_read_timeout")
+        if gwr_lbl is not None:
+            gwr_lbl.configure(text=locmsg("settings.llm.label.gateway_read_timeout"))
+        gwr_desc = self._llm_form_locale_refs.get("desc_gateway_read_timeout")
+        if gwr_desc is not None:
+            gwr_desc.configure(text=locmsg("settings.llm.desc.gateway_read_timeout"))
 
         api_lbl = locmsg("settings.llm.label.api_key")
         for lw in self._llm_api_key_labels:

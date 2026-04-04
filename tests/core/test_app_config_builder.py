@@ -41,7 +41,7 @@ def test_load_or_create_creates_ini_when_missing(tmp_path: Path) -> None:
     assert "ANTHROPIC_API_KEY" in content
     assert "OPENAI_API_KEY" in content
     assert config.core.debug is False
-    assert config.core.log_level == "DEBUG"
+    assert config.core.log_level == "ERROR"
     assert config.llm_providers.anthropic_api_key == ""
     assert config.llm_providers.anthropic_provider_enabled is False
     assert config.llm_providers.openai_provider_enabled is False
@@ -113,7 +113,7 @@ def test_app_config_store_returns_default_before_load() -> None:
     assert isinstance(config, AppConfig)
     assert config.core == CoreConfig()
     assert config.llm_providers.anthropic_api_key == ""
-    assert config.core.log_level == "DEBUG"
+    assert config.core.log_level == "ERROR"
 
 
 def test_app_config_store_returns_current_after_load(tmp_path: Path) -> None:
