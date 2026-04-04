@@ -1,12 +1,9 @@
 # unidoc2md
 ![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-[English](docs/en/README.md) · [Русский](docs/ru/README.md) · [中文](docs/zh/README.md)
-
-
 A lightweight app that converts documents in various formats into Markdown. You can use the output in a personal knowledge base or add it to project files for LLM chat workflows.
 
-![Text extraction tab in project settings](docs/en/img/intro.png)
+![Text extraction tab in project settings](img/intro.png)
 
 ## Features
 - Extracts text and images from documents, normalizes them, and sends them to Vision/OCR models for text extraction
@@ -35,6 +32,6 @@ Only **Windows** is supported for now; releases for other operating systems will
 > Note: the app is in alpha—expect bugs or rough edges, but core functionality is stable; it has been tested on roughly 200 documents and scans
 
 ## Developer documentation
-- [Manual build guide](docs/en/manual-build.md)
-- [Project structure](docs/en/project-structure.md)
-- [File extraction module](docs/en/file-extract-module.md)
+- [Manual build guide](manual-build.md)
+- [Project structure](project-structure.md)
+- [File extraction module](file-extract-module.md)
