@@ -5,7 +5,7 @@
   "project_execution.title_with_project": "执行：{name}",
   "project_execution.stage.discovery": "查找文件",
   "project_execution.stage.extract": "内容提取",
-  "project_execution.stage.image_processing": "图像处理",
+  "project_execution.stage.image_processing": "文字识别",
   "project_execution.stage.markdown": "生成 Markdown",
   "project_execution.stage.tagging": "标注与处理",
   "project_execution.stage.result": "结果",

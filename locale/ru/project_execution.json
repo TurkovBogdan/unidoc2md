@@ -5,7 +5,7 @@
   "project_execution.title_with_project": "Выполнение: {name}",
   "project_execution.stage.discovery": "Поиск файлов",
   "project_execution.stage.extract": "Извлечение содержимого",
-  "project_execution.stage.image_processing": "Обработка изображений",
+  "project_execution.stage.image_processing": "Распознавание текста",
   "project_execution.stage.markdown": "Создание разметки",
   "project_execution.stage.tagging": "Теггирование и обработка",
   "project_execution.stage.result": "Результат",

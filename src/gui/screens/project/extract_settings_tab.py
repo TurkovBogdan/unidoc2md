@@ -15,6 +15,7 @@ from src.gui.screens.project.extract_locale_keys import (
     field_description,
     field_label,
     field_option,
+    field_option_description,
     provider_description_key,
     provider_title_key,
 )
@@ -37,6 +38,7 @@ from src.gui.template.styles import (
     FONT_FAMILY_UI,
     PALETTE,
     UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
     UI_SETTINGS_BLOCK,
     UI_TABS,
 )
@@ -63,6 +65,7 @@ class ExtractSettingsTab(ttk.Frame):
         self._extract_provider_options: dict[str, dict[str, list[tuple[str, str]]]] = {}
         self._extract_provider_sub_frames: dict[str, tuple[ttk.Frame, int]] = {}
         self._extract_provider_algorithm_vars: dict[str, tk.Variable] = {}
+        self._extract_provider_algorithm_desc_labels: dict[str, ttk.Label] = {}
         self._article_title_label: ttk.Label | None = None
         self._build_ui()
 
@@ -95,7 +98,7 @@ class ExtractSettingsTab(ttk.Frame):
         self._article_title_label = ttk.Label(
             right_frame, text=self._t("project_extract.notes_title"), style="RightPanelTitle.TLabel"
         )
-        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)
         article_container.columnconfigure(0, weight=1)
@@ -139,6 +142,7 @@ class ExtractSettingsTab(ttk.Frame):
             self._extract_provider_options = {}
             self._extract_provider_sub_frames = {}
             self._extract_provider_algorithm_vars = {}
+            self._extract_provider_algorithm_desc_labels = {}
             self._build_form(self._scroll.content_frame)
             if self._article_title_label is not None and self._article_title_label.winfo_exists():
                 self._article_title_label.configure(text=self._t("project_extract.notes_title"))
@@ -205,12 +209,13 @@ class ExtractSettingsTab(ttk.Frame):
                 block.add_full_width_row(
                     gui_element_header_3(block.form, self._t(provider_title_key(provider_code)), pack=False)
                 )
-                if group.description:
-                    block.add_comment(
-                        gui_element_input_description(
-                            block.form, self._t(provider_description_key(provider_code)), wraplength=wrap_px
-                        )
+                prov_intro_nf = self._t(provider_description_key(provider_code)).strip()
+                if prov_intro_nf:
+                    pil = gui_element_input_description(
+                        block.form, prov_intro_nf, wraplength=wrap_px
                     )
+                    if pil is not None:
+                        block.add_comment(pil)
                 supported = ", ".join(exts_by_code.get(provider_code, []))
                 block.add_comment(
                     gui_element_text_small(
@@ -224,6 +229,13 @@ class ExtractSettingsTab(ttk.Frame):
             block.add_full_width_row(
                 gui_element_header_3(block.form, self._t(provider_title_key(provider_code)), pack=False)
             )
+            prov_intro = self._t(provider_description_key(provider_code)).strip()
+            if prov_intro:
+                prov_intro_lbl = gui_element_input_description(
+                    block.form, prov_intro, wraplength=wrap_px
+                )
+                if prov_intro_lbl is not None:
+                    block.add_comment(prov_intro_lbl)
             first_field = fields_list[0]
             algo_row_frame = block.add_field_row_frame()
             first_var, label_w, _desc_w, value_w, _ = self._make_field_widgets(
@@ -235,15 +247,12 @@ class ExtractSettingsTab(ttk.Frame):
                 self._extract_provider_options[provider_code][first_field.key] = list(first_field.options)
             block.finish_field_row(algo_row_frame, label_w, value_w)
 
-            intro_parts: list[str] = []
-            if group.description:
-                intro_parts.append(self._t(provider_description_key(provider_code)))
-            intro_parts.append(self._t(field_description(provider_code, first_field.key)))
-            block.add_comment(
-                gui_element_input_description(
-                    block.form, "\n\n".join(intro_parts), wraplength=wrap_px
-                )
+            algo_desc_lbl = gui_element_input_description(
+                block.form, "\u200b", wraplength=wrap_px
             )
+            if algo_desc_lbl is not None:
+                self._extract_provider_algorithm_desc_labels[provider_code] = algo_desc_lbl
+                block.add_comment(algo_desc_lbl)
 
             sub, sub_frame, sub_row = block.begin_sub_block()
             self._extract_provider_sub_frames[provider_code] = (sub_frame, sub_row)
@@ -278,6 +287,30 @@ class ExtractSettingsTab(ttk.Frame):
     ALGORITHM_KEY = "algorithm"
     SKIP_ALGORITHM_CODE = "skip"
 
+    def _refresh_algorithm_description(self, provider_code: str) -> None:
+        """Под выпадающим списком алгоритма: только описание выбранной опции (вступление провайдера — под заголовком)."""
+        label_w = self._extract_provider_algorithm_desc_labels.get(provider_code)
+        algo_var = self._extract_provider_algorithm_vars.get(provider_code)
+        if label_w is None or algo_var is None:
+            return
+        try:
+            if not label_w.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        options = self._extract_provider_options.get(provider_code, {}).get(self.ALGORITHM_KEY, [])
+        display = algo_var.get()
+        code = self._code_from_select_display(
+            provider_code, self.ALGORITHM_KEY, options, str(display)
+        ).lower()
+        opt_key = field_option_description(provider_code, self.ALGORITHM_KEY, code)
+        opt_txt = self._t(opt_key)
+        if opt_txt == opt_key:
+            opt_txt = self._t(field_description(provider_code, self.ALGORITHM_KEY)).strip()
+        else:
+            opt_txt = opt_txt.strip()
+        label_w.configure(text=opt_txt if opt_txt else "\u200b")
+
     def _code_from_select_display(
         self,
         provider_code: str,
@@ -296,6 +329,7 @@ class ExtractSettingsTab(ttk.Frame):
 
     def _update_provider_visibility(self, provider_code: str) -> None:
         """Hide provider sub-block when algorithm is «skip»."""
+        self._refresh_algorithm_description(provider_code)
         frame_row = self._extract_provider_sub_frames.get(provider_code)
         algo_var = self._extract_provider_algorithm_vars.get(provider_code)
         if frame_row is None or algo_var is None:

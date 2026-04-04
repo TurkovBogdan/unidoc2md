@@ -1,4 +1,7 @@
-"""Обработчик секции image_processing конфигурации проекта: умолчания, валидация и доступные значения по app.ini."""
+"""Обработчик секции image_processing конфигурации проекта: умолчания, валидация и доступные значения по app.ini.
+
+Следующий этап пайплайна в настройках проекта — «Создание Markdown» (секция markdown в конфиге).
+"""
 
 from __future__ import annotations
 
@@ -13,15 +16,18 @@ from src.modules.yandex_ocr.module import YandexOCRConfig
 # Константы и ключи секции image_processing (второй элемент — msgid для locmsg)
 IMAGE_PROCESSING_LOGICS = SimpleNamespace(
     skip="skip",
-    ocr_only="ocr_only",
-    vision_only="vision_only",
+    vision="vision",
+    ocr="ocr",
     options=(
-        ("skip", "project_image_processing.logic.skip"),
-        ("ocr_only", "project_image_processing.logic.ocr_only"),
-        ("vision_only", "project_image_processing.logic.vision_only"),
+        ("skip", "project_image_processing.text_recognition.skip"),
+        ("vision", "project_image_processing.text_recognition.vision"),
+        ("ocr", "project_image_processing.text_recognition.ocr"),
     ),
-    valid_codes=frozenset({"skip", "ocr_only", "vision_only"}),
+    valid_codes=frozenset({"skip", "vision", "ocr"}),
 )
+
+# GUI: заголовок первого ряда (Header3 + комбо), как pipeline create_documents_index_heading.
+IMAGE_PROCESSING_GUI_MODE_HEADING_MSGID = "project_image_processing.mode_field_label"
 
 IMAGE_PROCESSING_DEFAULTS = SimpleNamespace(
     ocr_provider="yandex_ocr",
@@ -33,7 +39,7 @@ IMAGE_PROCESSING_DEFAULTS = SimpleNamespace(
     vision_temperature=0.3,
 )
 IMAGE_PROCESSING_KEYS = SimpleNamespace(
-    image_processing_logic="image_processing_logic",
+    text_recognition="text_recognition",
     ocr_provider="ocr_provider",
     ocr_model="ocr_model",
     vision_provider="vision_provider",
@@ -70,7 +76,7 @@ class ImageProcessingConfig:
         D = IMAGE_PROCESSING_DEFAULTS
         K = IMAGE_PROCESSING_KEYS
         return {
-            K.image_processing_logic: L.skip,
+            K.text_recognition: L.skip,
             K.ocr_provider: D.ocr_provider,
             K.ocr_model: D.ocr_model,
             K.vision_provider: D.vision_provider,
@@ -89,14 +95,14 @@ class ImageProcessingConfig:
             return errors
         L = IMAGE_PROCESSING_LOGICS
         K = IMAGE_PROCESSING_KEYS
-        logic = data.get(K.image_processing_logic) or L.skip
+        logic = data.get(K.text_recognition) or L.skip
         if isinstance(logic, str):
             logic = logic.strip().lower()
         else:
             logic = ""
         if logic not in L.valid_codes:
             errors.append(
-                f"Image_processing: image_processing_logic должен быть один из: {', '.join(sorted(L.valid_codes))}."
+                f"Image_processing: text_recognition должен быть один из: {', '.join(sorted(L.valid_codes))}."
             )
         for key in (
             K.ocr_provider,
@@ -178,9 +184,9 @@ class ImageProcessingConfig:
         for code, msgid in IMAGE_PROCESSING_LOGICS.options:
             if code == IMAGE_PROCESSING_LOGICS.skip:
                 result.append((code, locmsg(msgid)))
-            elif code == IMAGE_PROCESSING_LOGICS.ocr_only and ocr_available:
+            elif code == IMAGE_PROCESSING_LOGICS.vision and vision_available:
                 result.append((code, locmsg(msgid)))
-            elif code == IMAGE_PROCESSING_LOGICS.vision_only and vision_available:
+            elif code == IMAGE_PROCESSING_LOGICS.ocr and ocr_available:
                 result.append((code, locmsg(msgid)))
         processing_logic = tuple(result)
 

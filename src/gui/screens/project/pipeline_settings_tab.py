@@ -42,6 +42,7 @@ from src.gui.template.styles import (
     FONT_FAMILY_UI,
     PALETTE,
     UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
     UI_SETTINGS_BLOCK,
     UI_TABS,
 )
@@ -101,7 +102,7 @@ class PipelineSettingsTab(ttk.Frame):
             text=locmsg("project_pipeline.notes_title"),
             style="RightPanelTitle.TLabel",
         )
-        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)
         article_container.columnconfigure(0, weight=1)
@@ -134,18 +135,18 @@ class PipelineSettingsTab(ttk.Frame):
         block = SettingsBlock(self._scroll.content_frame)
 
         idx_row = block.add_field_row_frame()
+        self._hdr_create_index = gui_element_header_3(
+            idx_row, locmsg("project_pipeline.create_documents_index_heading"), pack=False
+        )
+        self._hdr_create_index.configure(wraplength=cfg["column_label_px"])
         self._idx_combo = gui_element_input_select(
             idx_row,
             variable=self._create_documents_index_var,
             values=list(self._bool_ui),
             width=28,
         )
-        self._lbl_create_index = gui_element_input_label(
-            idx_row,
-            locmsg("project_pipeline.create_documents_index_label"),
-            wraplength=cfg["column_label_px"],
-        )
-        block.finish_field_row(idx_row, self._lbl_create_index, self._idx_combo)
+        block.finish_field_row(idx_row, self._hdr_create_index, self._idx_combo)
+
         self._desc_create_index = gui_element_input_description(
             block.form,
             locmsg("project_pipeline.create_documents_index_hint"),
@@ -157,7 +158,7 @@ class PipelineSettingsTab(ttk.Frame):
         self._hdr_threads = gui_element_header_3(
             block.form, locmsg("project_pipeline.threads_section_title"), pack=False
         )
-        block.add_comment(self._hdr_threads)
+        block.add_custom_row(self._hdr_threads, pady=cfg["after_separator_section_header_pady"])
         self._desc_threads_section = gui_element_input_description(
             block.form,
             locmsg("project_pipeline.threads_section_description"),
@@ -213,7 +214,7 @@ class PipelineSettingsTab(ttk.Frame):
         )
         block.add_section_banner(self._pipeline_image_processing_banner)
         self._pipeline_image_processing_banner.grid_configure(
-            pady=(UI_SETTINGS_BLOCK["block_sep_top"], UI_SETTINGS_BLOCK["gap_px"]),
+            pady=UI_SETTINGS_BLOCK["warning_banner_row_pady"],
         )
 
         md_row = block.add_field_row_frame()
@@ -282,9 +283,9 @@ class PipelineSettingsTab(ttk.Frame):
             self._article_text.configure(state=tk.DISABLED)
 
             cfg = UI_SETTINGS_BLOCK
-            if self._lbl_create_index is not None:
-                self._lbl_create_index.configure(
-                    text=locmsg("project_pipeline.create_documents_index_label"),
+            if self._hdr_create_index is not None:
+                self._hdr_create_index.configure(
+                    text=locmsg("project_pipeline.create_documents_index_heading"),
                     wraplength=cfg["column_label_px"],
                 )
             if self._desc_create_index is not None:

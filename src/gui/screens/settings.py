@@ -35,6 +35,7 @@ from src.gui.template.styles import (
     GUI_TOPBAR,
     PALETTE,
     UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
     UI_SETTINGS_BLOCK,
     UI_TABS,
 )
@@ -183,7 +184,7 @@ class SettingsScreen(BaseGUIScreen):
         article_label = ttk.Label(
             right_frame, text=sidebar_title, style="RightPanelTitle.TLabel"
         )
-        article_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        article_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
 
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)

@@ -66,6 +66,11 @@ class _RowBuilder:
         )
         self._row += 1
 
+    def add_custom_row(self, widget: tk.Widget, *, pady: tuple[int, int]) -> None:
+        """Full-width row with explicit vertical padding (e.g. subsection title after separator)."""
+        widget.grid(row=self._row, column=0, sticky=tk.EW, pady=pady)
+        self._row += 1
+
     def add_label_row(self, label_widget: tk.Widget) -> None:
         """Single-column label row (above a full-width widget)."""
         label_widget.grid(

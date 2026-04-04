@@ -234,6 +234,10 @@ UI_SETTINGS_BLOCK = {
     "field_pady": 2,
     "block_sep_top": GAP_PX,
     "block_sep_bottom": 0,
+    # gui_element_warning_banner row in forms: less gap above, slightly more below next control
+    "warning_banner_row_pady": (4, 12),
+    # Horizontal rule → subsection title (e.g. «Настройка потоков»): air below line, tight gap before intro text
+    "after_separator_section_header_pady": (GAP_PX, 4),
 }
 
 # Modals: card padding/size, text wrap
@@ -271,6 +275,9 @@ SPACING = {
     "md": 16,
     "lg": 24,
 }
+
+# Right column on project tabs: title («Пояснения») → article body
+UI_RIGHT_PANEL_NOTES_TITLE_PADY = (0, SPACING["sm"])
 
 # Content slot: screen area padding, data processing block
 SCREEN_WRAPPER_PADDING = 16

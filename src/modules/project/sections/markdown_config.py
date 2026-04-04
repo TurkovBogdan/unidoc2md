@@ -1,1 +1,103 @@
-"""Обработчик секции markdown конфигурации проекта: logic (none / llm_processing), LLM-настройки."""from __future__ import annotationsfrom types import SimpleNamespacefrom typing import Any# logic: none — сохранять как есть; llm_processing — обрабатывать LLM# Второй элемент options — msgid для locmsg (см. locale/*/project_markdown.json)MARKDOWN_LOGICS = SimpleNamespace(    none="none",    llm_processing="llm_processing",    options=(        ("none", "project_markdown.logic.none"),        ("llm_processing", "project_markdown.logic.llm_processing"),    ),    valid_codes=frozenset({"none", "llm_processing"}),)MARKDOWN_DEFAULTS = SimpleNamespace(    llm_provider="",    llm_model="",    llm_reasoning="low",    llm_temperature=0.5,    llm_system_prompt="",)MARKDOWN_KEYS = SimpleNamespace(    markdown_logic="markdown_logic",    llm_provider="llm_provider",    llm_model="llm_model",    llm_reasoning="llm_reasoning",    llm_temperature="llm_temperature",    llm_system_prompt="llm_system_prompt",)class MarkdownConfig:    """Статический класс для работы с секцией markdown: умолчания и валидация."""    MARKDOWN_LOGICS = MARKDOWN_LOGICS    MARKDOWN_DEFAULTS = MARKDOWN_DEFAULTS    MARKDOWN_KEYS = MARKDOWN_KEYS    @staticmethod    def get_default() -> dict[str, Any]:        """Возвращает словарь умолчаний для секции markdown."""        L = MARKDOWN_LOGICS        D = MARKDOWN_DEFAULTS        K = MARKDOWN_KEYS        return {            K.markdown_logic: L.none,            K.llm_provider: D.llm_provider,            K.llm_model: D.llm_model,            K.llm_reasoning: D.llm_reasoning,            K.llm_temperature: D.llm_temperature,            K.llm_system_prompt: D.llm_system_prompt,        }    @staticmethod    def validate(data: Any) -> list[str]:        """Проверяет данные секции markdown. Возвращает список сообщений об ошибках (пустой — данные валидны)."""        errors: list[str] = []        if not isinstance(data, dict):            errors.append("Markdown: ожидается объект (dict).")            return errors        L = MARKDOWN_LOGICS        K = MARKDOWN_KEYS        logic = data.get(K.markdown_logic) or L.none        if isinstance(logic, str):            logic = logic.strip().lower()        else:            logic = ""        if logic not in L.valid_codes:            errors.append(                f"Markdown: markdown_logic должен быть один из: {', '.join(sorted(L.valid_codes))}."            )        for key in (            K.llm_provider,            K.llm_model,            K.llm_reasoning,            K.llm_system_prompt,        ):            val = data.get(key)            if val is not None and not isinstance(val, str):                errors.append(f"Markdown: поле {key} должно быть строкой.")        t = data.get(K.llm_temperature)        if t is not None:            try:                tf = float(t)                if not (0.0 <= tf <= 2.0):                    errors.append("Markdown: llm_temperature должен быть от 0.0 до 2.0.")            except (TypeError, ValueError):                errors.append("Markdown: llm_temperature должен быть числом.")        reason = (data.get(K.llm_reasoning) or "").strip().lower()        if reason and reason not in ("disabled", "low", "medium", "high"):            errors.append(                "Markdown: llm_reasoning должен быть один из: disabled, low, medium, high."            )        return errors
+"""Обработчик секции markdown конфигурации проекта: logic (none / llm_processing), LLM-настройки."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+
+# logic: none — только текст; llm_processing — нормализация разметки через LLM
+# Второй элемент options — msgid для locmsg (см. locale/*/project_markdown.json)
+MARKDOWN_LOGICS = SimpleNamespace(
+    none="none",
+    llm_processing="llm_processing",
+    options=(
+        ("none", "project_markdown.logic.none"),
+        ("llm_processing", "project_markdown.logic.llm_processing"),
+    ),
+    valid_codes=frozenset({"none", "llm_processing"}),
+)
+
+# GUI: заголовок первого ряда (Header3 + комбо), как pipeline create_documents_index_heading.
+MARKDOWN_GUI_MODE_HEADING_MSGID = "project_markdown.mode_field_label"
+
+MARKDOWN_DEFAULTS = SimpleNamespace(
+    llm_provider="",
+    llm_model="",
+    llm_reasoning="low",
+    llm_temperature=0.5,
+    llm_system_prompt="",
+)
+
+MARKDOWN_KEYS = SimpleNamespace(
+    markdown_logic="markdown_logic",
+    llm_provider="llm_provider",
+    llm_model="llm_model",
+    llm_reasoning="llm_reasoning",
+    llm_temperature="llm_temperature",
+    llm_system_prompt="llm_system_prompt",
+)
+
+
+class MarkdownConfig:
+    """Статический класс для работы с секцией markdown: умолчания и валидация."""
+
+    MARKDOWN_LOGICS = MARKDOWN_LOGICS
+    MARKDOWN_DEFAULTS = MARKDOWN_DEFAULTS
+    MARKDOWN_KEYS = MARKDOWN_KEYS
+
+    @staticmethod
+    def get_default() -> dict[str, Any]:
+        """Возвращает словарь умолчаний для секции markdown."""
+        L = MARKDOWN_LOGICS
+        D = MARKDOWN_DEFAULTS
+        K = MARKDOWN_KEYS
+        return {
+            K.markdown_logic: L.none,
+            K.llm_provider: D.llm_provider,
+            K.llm_model: D.llm_model,
+            K.llm_reasoning: D.llm_reasoning,
+            K.llm_temperature: D.llm_temperature,
+            K.llm_system_prompt: D.llm_system_prompt,
+        }
+
+    @staticmethod
+    def validate(data: Any) -> list[str]:
+        """Проверяет данные секции markdown. Возвращает список сообщений об ошибках (пустой — данные валидны)."""
+        errors: list[str] = []
+        if not isinstance(data, dict):
+            errors.append("Markdown: ожидается объект (dict).")
+            return errors
+        L = MARKDOWN_LOGICS
+        K = MARKDOWN_KEYS
+        logic = data.get(K.markdown_logic) or L.none
+        if isinstance(logic, str):
+            logic = logic.strip().lower()
+        else:
+            logic = ""
+        if logic not in L.valid_codes:
+            errors.append(
+                f"Markdown: markdown_logic должен быть один из: {', '.join(sorted(L.valid_codes))}."
+            )
+        for key in (
+            K.llm_provider,
+            K.llm_model,
+            K.llm_reasoning,
+            K.llm_system_prompt,
+        ):
+            val = data.get(key)
+            if val is not None and not isinstance(val, str):
+                errors.append(f"Markdown: поле {key} должно быть строкой.")
+        t = data.get(K.llm_temperature)
+        if t is not None:
+            try:
+                tf = float(t)
+                if not (0.0 <= tf <= 2.0):
+                    errors.append("Markdown: llm_temperature должен быть от 0.0 до 2.0.")
+            except (TypeError, ValueError):
+                errors.append("Markdown: llm_temperature должен быть числом.")
+        reason = (data.get(K.llm_reasoning) or "").strip().lower()
+        if reason and reason not in ("disabled", "low", "medium", "high"):
+            errors.append(
+                "Markdown: llm_reasoning должен быть один из: disabled, low, medium, high."
+            )
+        return errors

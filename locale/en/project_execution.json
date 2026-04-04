@@ -5,7 +5,7 @@
   "project_execution.title_with_project": "Execution: {name}",
   "project_execution.stage.discovery": "File discovery",
   "project_execution.stage.extract": "Content extraction",
-  "project_execution.stage.image_processing": "Image processing",
+  "project_execution.stage.image_processing": "Text recognition",
   "project_execution.stage.markdown": "Markdown generation",
   "project_execution.stage.tagging": "Tagging",
   "project_execution.stage.result": "Result",

@@ -11,6 +11,7 @@ from src.core import locmsg
 from src.modules.llm_providers.schemas.chat import LLMChatReasoningEffort
 from src.modules.project.sections.image_processing_config import (
     IMAGE_PROCESSING_DEFAULTS,
+    IMAGE_PROCESSING_GUI_MODE_HEADING_MSGID,
     IMAGE_PROCESSING_KEYS,
     IMAGE_PROCESSING_LOGICS,
     ImageProcessingConfig,
@@ -43,6 +44,7 @@ from src.gui.template.styles import (
     FONT_FAMILY_UI,
     PALETTE,
     UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
     UI_SETTINGS_BLOCK,
     UI_TABS,
 )
@@ -55,9 +57,9 @@ _VISION_REASONING_OPTIONS: list[tuple[str, str]] = [
 ]
 
 _LOGIC_DESC_KEYS: dict[str, str] = {
-    IMAGE_PROCESSING_LOGICS.skip: "project_image_processing.logic_desc.skip",
-    IMAGE_PROCESSING_LOGICS.ocr_only: "project_image_processing.logic_desc.ocr_only",
-    IMAGE_PROCESSING_LOGICS.vision_only: "project_image_processing.logic_desc.vision_only",
+    IMAGE_PROCESSING_LOGICS.skip: "project_image_processing.text_recognition_desc.skip",
+    IMAGE_PROCESSING_LOGICS.vision: "project_image_processing.text_recognition_desc.vision",
+    IMAGE_PROCESSING_LOGICS.ocr: "project_image_processing.text_recognition_desc.ocr",
 }
 
 _REASONING_API_CODES = frozenset(
@@ -127,6 +129,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
         self._desc_reasoning: tk.Widget | None = None
         self._lbl_temperature: tk.Widget | None = None
         self._desc_temperature: tk.Widget | None = None
+        self._temperature_quote_banner: tk.Frame | None = None
         self._lbl_extra: tk.Widget | None = None
         self._desc_extra: tk.Widget | None = None
         self._fp_vision_system_prompt_area: Any = None
@@ -135,7 +138,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
         self._fp_vision_provider_combo: Any = None
         self._fp_vision_model_combo: Any = None
         self._fp_vision_temperature_spin: Any = None
-        self._lbl_mode: tk.Widget | None = None
+        self._hdr_mode: ttk.Label | None = None
         self._build_ui()
 
     def _sync_logic_code_from_ui(self) -> None:
@@ -174,10 +177,11 @@ class ImageProcessingSettingsTab(ttk.Frame):
             ],
             width=28,
         )
-        self._lbl_mode = gui_element_input_label(
-            mode_row, locmsg("project_image_processing.mode_field_label"), wraplength=cfg["column_label_px"]
+        self._hdr_mode = gui_element_header_3(
+            mode_row, locmsg(IMAGE_PROCESSING_GUI_MODE_HEADING_MSGID), pack=False
         )
-        block.finish_field_row(mode_row, self._lbl_mode, self._logic_combo)
+        self._hdr_mode.configure(wraplength=cfg["column_label_px"])
+        block.finish_field_row(mode_row, self._hdr_mode, self._logic_combo)
         self._file_processing_logic_var.trace_add(
             "write",
             lambda *_: (self._sync_logic_code_from_ui(), self._on_file_processing_logic_change()),
@@ -185,7 +189,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
 
         self._logic_description = gui_element_input_description(
             block.form,
-            locmsg("project_image_processing.logic_desc.skip"),
+            locmsg("project_image_processing.text_recognition_desc.skip"),
             wraplength=cfg["container_width_px"],
         )
         block.add_comment(self._logic_description)
@@ -336,6 +340,14 @@ class ImageProcessingSettingsTab(ttk.Frame):
             wraplength=cfg["container_width_px"],
         )
         vision_model_sub.add_comment(self._desc_temperature)
+        self._temperature_quote_banner = gui_element_warning_banner(
+            self._vision_model_settings_frame,
+            locmsg("project_image_processing.vision_model.temperature_hint_quote"),
+        )
+        vision_model_sub.add_custom_row(
+            self._temperature_quote_banner,
+            pady=UI_SETTINGS_BLOCK["warning_banner_row_pady"],
+        )
         self._lbl_extra = gui_element_input_label(
             self._vision_model_settings_frame,
             locmsg("project_image_processing.label.extra_instructions"),
@@ -379,7 +391,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
             text=locmsg("project_image_processing.notes_title"),
             style="RightPanelTitle.TLabel",
         )
-        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)
         article_container.columnconfigure(0, weight=1)
@@ -412,8 +424,8 @@ class ImageProcessingSettingsTab(ttk.Frame):
         if self._logic_description is not None:
             key = _LOGIC_DESC_KEYS.get(code)
             self._logic_description.configure(text=locmsg(key) if key else "")
-        show_ocr = code == IMAGE_PROCESSING_LOGICS.ocr_only
-        show_vision = code == IMAGE_PROCESSING_LOGICS.vision_only
+        show_ocr = code == IMAGE_PROCESSING_LOGICS.ocr
+        show_vision = code == IMAGE_PROCESSING_LOGICS.vision
         if self._data_processing_warning_banner:
             if show_ocr and not ImageProcessingConfig.is_ocr_available():
                 grid_section_banner(self._data_processing_warning_banner, self._banner_row)
@@ -471,9 +483,9 @@ class ImageProcessingSettingsTab(ttk.Frame):
         """Refresh tab strings after language change."""
         try:
             cfg = UI_SETTINGS_BLOCK
-            if self._lbl_mode is not None:
-                self._lbl_mode.configure(
-                    text=locmsg("project_image_processing.mode_field_label"),
+            if self._hdr_mode is not None:
+                self._hdr_mode.configure(
+                    text=locmsg(IMAGE_PROCESSING_GUI_MODE_HEADING_MSGID),
                     wraplength=cfg["column_label_px"],
                 )
             if self._ocr_section_header is not None:
@@ -518,6 +530,12 @@ class ImageProcessingSettingsTab(ttk.Frame):
                 if len(children) >= 2:
                     children[1].configure(text=locmsg("project_image_processing.yandex_key_banner"))
 
+            banner_temp = self._temperature_quote_banner
+            if banner_temp is not None and banner_temp.winfo_exists():
+                ch = banner_temp.winfo_children()
+                if len(ch) >= 2:
+                    ch[1].configure(text=locmsg("project_image_processing.vision_model.temperature_hint_quote"))
+
             if self._article_title_label is not None and self._article_title_label.winfo_exists():
                 self._article_title_label.configure(text=locmsg("project_image_processing.notes_title"))
             if self._article_text is not None:
@@ -541,7 +559,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
     def load_image_processing(self, data: dict[str, Any] | None) -> None:
         """Load widgets from image_processing section data."""
         data = data or {}
-        logic_code = data.get(IMAGE_PROCESSING_KEYS.image_processing_logic, IMAGE_PROCESSING_LOGICS.skip)
+        logic_code = data.get(IMAGE_PROCESSING_KEYS.text_recognition, IMAGE_PROCESSING_LOGICS.skip)
         if isinstance(logic_code, str):
             logic_code = logic_code.strip().lower()
         else:
@@ -583,8 +601,8 @@ class ImageProcessingSettingsTab(ttk.Frame):
             self._fp_vision_temperature_var.set(f"{IMAGE_PROCESSING_DEFAULTS.vision_temperature:.1f}")
         self._on_fp_ocr_provider_change()
         self._on_file_processing_logic_change()
-        show_ocr = logic_code == IMAGE_PROCESSING_LOGICS.ocr_only
-        show_vision = logic_code == IMAGE_PROCESSING_LOGICS.vision_only
+        show_ocr = logic_code == IMAGE_PROCESSING_LOGICS.ocr
+        show_vision = logic_code == IMAGE_PROCESSING_LOGICS.vision
         if show_ocr:
             ocr_opts = get_ocr_provider_options()
             if ocr_opts and (not self._fp_ocr_provider_var.get() or self._fp_ocr_provider_var.get() not in ocr_opts):
@@ -604,7 +622,7 @@ class ImageProcessingSettingsTab(ttk.Frame):
         self._sync_logic_code_from_ui()
         self._sync_vision_reasoning_from_ui()
         return {
-            IMAGE_PROCESSING_KEYS.image_processing_logic: self._logic_code,
+            IMAGE_PROCESSING_KEYS.text_recognition: self._logic_code,
             IMAGE_PROCESSING_KEYS.ocr_provider: (self._fp_ocr_provider_var.get() or "").strip().lower()
             or IMAGE_PROCESSING_DEFAULTS.ocr_provider,
             IMAGE_PROCESSING_KEYS.ocr_model: (self._fp_ocr_model_var.get() or IMAGE_PROCESSING_DEFAULTS.ocr_model).strip(),

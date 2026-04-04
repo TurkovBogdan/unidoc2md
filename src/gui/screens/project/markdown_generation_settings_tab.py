@@ -11,6 +11,7 @@ from src.core import locmsg
 from src.modules.llm_providers.schemas.chat import LLMChatReasoningEffort
 from src.modules.project.sections.markdown_config import (
     MARKDOWN_DEFAULTS,
+    MARKDOWN_GUI_MODE_HEADING_MSGID,
     MARKDOWN_KEYS,
     MARKDOWN_LOGICS,
 )
@@ -30,11 +31,13 @@ from src.gui.template.elements import (
     gui_element_input_spin_float,
     gui_element_input_text_area,
     gui_element_separator,
+    gui_element_warning_banner,
 )
 from src.gui.template.styles import (
     FONT_FAMILY_UI,
     PALETTE,
     UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
     UI_SETTINGS_BLOCK,
     UI_TABS,
 )
@@ -76,7 +79,7 @@ def _reasoning_msgid_for_code(code: str) -> str:
 
 
 class MarkdownGenerationSettingsTab(ttk.Frame):
-    """Mode none vs LLM; when LLM — provider, model, reasoning, temperature."""
+    """Text-only vs LLM markup normalization; when LLM — provider, model, tuning."""
 
     SETTINGS_WIDTH_PX = 520
     _SEPARATOR_PADX = 12
@@ -102,7 +105,7 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
         self._reasoning_combo: Any = None
         self._temperature_spin: Any = None
         self._system_prompt_area: Any = None
-        self._lbl_mode: tk.Widget | None = None
+        self._hdr_mode: ttk.Label | None = None
         self._llm_header: ttk.Label | None = None
         self._lbl_provider: tk.Widget | None = None
         self._desc_provider: tk.Widget | None = None
@@ -113,6 +116,7 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
         self._desc_reasoning: tk.Widget | None = None
         self._lbl_temperature: tk.Widget | None = None
         self._desc_temperature: tk.Widget | None = None
+        self._temperature_quote_banner: tk.Frame | None = None
         self._lbl_system: tk.Widget | None = None
         self._desc_system: tk.Widget | None = None
         self._article_title_label: ttk.Label | None = None
@@ -153,10 +157,11 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
             values=[locmsg(msgid) for _code, msgid in MARKDOWN_LOGICS.options],
             width=28,
         )
-        self._lbl_mode = gui_element_input_label(
-            mode_row, locmsg("project_markdown.mode_field_label"), wraplength=cfg["column_label_px"]
+        self._hdr_mode = gui_element_header_3(
+            mode_row, locmsg(MARKDOWN_GUI_MODE_HEADING_MSGID), pack=False
         )
-        block.finish_field_row(mode_row, self._lbl_mode, self._logic_combo)
+        self._hdr_mode.configure(wraplength=cfg["column_label_px"])
+        block.finish_field_row(mode_row, self._hdr_mode, self._logic_combo)
         self._logic_var.trace_add(
             "write",
             lambda *_: (self._sync_logic_code_from_ui(), self._on_logic_change()),
@@ -253,6 +258,15 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
             wraplength=cfg["container_width_px"],
         )
         model_sub.add_comment(self._desc_temperature)
+        self._temperature_quote_banner = gui_element_warning_banner(
+            self._model_settings_frame,
+            locmsg("project_markdown.hint.temperature_quote"),
+            wraplength=cfg["container_width_px"],
+        )
+        model_sub.add_custom_row(
+            self._temperature_quote_banner,
+            pady=UI_SETTINGS_BLOCK["warning_banner_row_pady"],
+        )
         self._lbl_system = gui_element_input_label(
             self._model_settings_frame,
             locmsg("project_markdown.label.system_prompt"),
@@ -288,7 +302,7 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
             text=locmsg("project_markdown.notes_title"),
             style="RightPanelTitle.TLabel",
         )
-        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)
         article_container.columnconfigure(0, weight=1)
@@ -351,9 +365,9 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
         """Refresh tab strings after language change."""
         try:
             cfg = UI_SETTINGS_BLOCK
-            if self._lbl_mode is not None:
-                self._lbl_mode.configure(
-                    text=locmsg("project_markdown.mode_field_label"),
+            if self._hdr_mode is not None:
+                self._hdr_mode.configure(
+                    text=locmsg(MARKDOWN_GUI_MODE_HEADING_MSGID),
                     wraplength=cfg["column_label_px"],
                 )
             if self._llm_header is not None:
@@ -382,6 +396,15 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
             ):
                 if desc is not None:
                     desc.configure(text=locmsg(key), wraplength=cfg["container_width_px"])
+
+            banner_temp = self._temperature_quote_banner
+            if banner_temp is not None and banner_temp.winfo_exists():
+                ch = banner_temp.winfo_children()
+                if len(ch) >= 2:
+                    ch[1].configure(
+                        text=locmsg("project_markdown.hint.temperature_quote"),
+                        wraplength=cfg["container_width_px"],
+                    )
 
             if self._article_title_label is not None and self._article_title_label.winfo_exists():
                 self._article_title_label.configure(text=locmsg("project_markdown.notes_title"))

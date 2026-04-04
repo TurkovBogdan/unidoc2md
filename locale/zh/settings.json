@@ -22,7 +22,7 @@
   "settings.ocr.label.yandex_ocr": "Yandex OCR",
   "settings.ocr.label.key_id": "Key ID",
   "settings.ocr.label.key_secret": "Key Secret",
-  "settings.ocr.article": "当项目在图像处理中选择 OCR 模式时，会使用 Yandex OCR。\n\n在「Yandex OCR」行中选择「启用」，并填写 Yandex 云控制台中的 Key ID 与 Key Secret。选择「禁用」时隐藏密钥区域。若无有效密钥，将无法使用 Yandex 识别。\n\n密钥保存在本机 app.ini（或关联的配置存储）中。",
+  "settings.ocr.article": "当项目在文字识别中选择 OCR 模式时，会使用 Yandex OCR。\n\n在「Yandex OCR」行中选择「启用」，并填写 Yandex 云控制台中的 Key ID 与 Key Secret。选择「禁用」时隐藏密钥区域。若无有效密钥，将无法使用 Yandex 识别。\n\n密钥保存在本机 app.ini（或关联的配置存储）中。",
   "settings.save_modal.title": "设置",
   "settings.save_modal.message": "设置已保存。"
 }

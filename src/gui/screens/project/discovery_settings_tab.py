@@ -18,7 +18,14 @@ from src.core import locmsg
 from src.gui.template.components import CustomScrollbar
 from src.gui.template.elements import gui_element_header_3
 from src.gui.template.elements.classes.gui_input_select import GuiInputSelect
-from src.gui.template.styles import FONT_FAMILY_UI, PALETTE, SPACING, UI_FONT_SIZE, UI_TABS
+from src.gui.template.styles import (
+    FONT_FAMILY_UI,
+    PALETTE,
+    SPACING,
+    UI_FONT_SIZE,
+    UI_RIGHT_PANEL_NOTES_TITLE_PADY,
+    UI_TABS,
+)
 from src.gui.utils import open_folder
 
 
@@ -119,7 +126,7 @@ class DiscoverySettingsTab(ttk.Frame):
         self._article_title_label = ttk.Label(
             right_frame, text=locmsg("project.discovery.notes_title"), style="RightPanelTitle.TLabel"
         )
-        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+        self._article_title_label.grid(row=0, column=0, sticky=tk.W, pady=UI_RIGHT_PANEL_NOTES_TITLE_PADY)
         article_container = tk.Frame(right_frame, bg=PALETTE["bg_surface"])
         article_container.grid(row=1, column=0, sticky=tk.NSEW)
         article_container.columnconfigure(0, weight=1)

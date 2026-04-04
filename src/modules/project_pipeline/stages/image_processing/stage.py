@@ -80,7 +80,7 @@ class ImageProcessingStage(BasePipelineStage):
     """Image processing в извлечённых документах: OCR или Vision LLM."""
 
     _vision_llm_call_lock = threading.Lock()
-    # На время run() для vision_only / ocr_only: lock + счётчики (LLM токены или OCR кеш/API).
+    # На время run() для vision / ocr: lock + счётчики (LLM токены или OCR кеш/API).
     _image_usage_state: tuple[threading.Lock, _VisionUsageAcc] | None = None
 
     @property
@@ -90,8 +90,8 @@ class ImageProcessingStage(BasePipelineStage):
     def is_enabled(self, context: PipelineContext) -> bool:
         logic = self._get_processing_logic(context.config)
         return logic in (
-            ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only,
-            ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision_only,
+            ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr,
+            ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision,
         )
 
     def run(self, context: PipelineContext, input_result: object) -> StageResult:
@@ -149,7 +149,7 @@ class ImageProcessingStage(BasePipelineStage):
             "api_calls": 0,
         }
 
-        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision_only:
+        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision:
             section = context.config.image_processing or {}
             K = ImageProcessingConfig.IMAGE_PROCESSING_KEYS
             vision_provider = (section.get(K.vision_provider) or "").strip()
@@ -167,7 +167,7 @@ class ImageProcessingStage(BasePipelineStage):
                 price_out if price_out is not None else "—",
             )
             self._image_usage_state = (usage_lock, usage_acc)
-        elif logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only:
+        elif logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
             self._image_usage_state = (usage_lock, usage_acc)
         else:
             self._image_usage_state = None
@@ -250,7 +250,7 @@ class ImageProcessingStage(BasePipelineStage):
         section = config.image_processing or {}
         return (
             section.get(
-                ImageProcessingConfig.IMAGE_PROCESSING_KEYS.image_processing_logic
+                ImageProcessingConfig.IMAGE_PROCESSING_KEYS.text_recognition
             )
             or ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.skip
         ).strip().lower()
@@ -259,7 +259,7 @@ class ImageProcessingStage(BasePipelineStage):
         logic = self._get_processing_logic(config)
         if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.skip:
             return 0
-        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only:
+        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
             return 1
         threads = config.pipeline.get(
             KEY_IMAGE_PROCESSING_THREADS,
@@ -345,7 +345,7 @@ class ImageProcessingStage(BasePipelineStage):
     ) -> dict[str, Any]:
         """Сводка для UI: vision — токены и цены; ocr — только кеш/API (без стоимости)."""
         vision_block: dict[str, Any] | None = None
-        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision_only:
+        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision:
             vision_block = {
                 "billing": "vision",
                 "provider": vision_provider,
@@ -359,7 +359,7 @@ class ImageProcessingStage(BasePipelineStage):
                 "cache_hits": int(usage_acc["cache_hits"]),
                 "api_calls": int(usage_acc["api_calls"]),
             }
-        elif logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only:
+        elif logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
             vision_block = {
                 "billing": "ocr",
                 "cache_hits": int(usage_acc["cache_hits"]),
@@ -379,9 +379,9 @@ class ImageProcessingStage(BasePipelineStage):
         if item.semantic_type != SEMANTIC_TYPE_REQUIRED_DETECTION:
             return item
         logic = self._get_processing_logic(context.config)
-        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr_only:
+        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
             return self._ocr_processing(context, item)
-        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision_only:
+        if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision:
             return self._vision_processing(context, item)
         return item
 
