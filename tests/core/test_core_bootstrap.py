@@ -8,6 +8,7 @@ import pytest
 
 from src.app_path import AppPath, ensure_app_runtime_dirs
 from src.core import AppConfigStore
+from src.core.app_locale import AppLocaleStore
 from src.core.bootstrap import CoreBootstrap, prepare_core_runtime
 from src.core.logger import set_system_logger
 
@@ -82,3 +83,22 @@ def test_lang_boot_requires_languages(tmp_path: Path) -> None:
     paths = prepare_core_runtime(tmp_path)
     with pytest.raises(ValueError):
         CoreBootstrap.lang_boot(paths)
+
+
+def test_lang_boot_with_empty_language_uses_en_without_persist(tmp_path: Path) -> None:
+    paths = prepare_core_runtime(tmp_path)
+    ini_before = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    CoreBootstrap.lang_boot(paths, _TEST_LANGUAGES)
+    ini_after = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    assert AppLocaleStore.get_language() == "en"
+    assert ini_after == ini_before
+    assert "LANGUAGE = en" not in ini_after
+
+
+def test_lang_boot_without_en_uses_first_available_without_persist(tmp_path: Path) -> None:
+    paths = prepare_core_runtime(tmp_path)
+    ini_before = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    CoreBootstrap.lang_boot(paths, {"ru": "Русский", "zh": "中文"})
+    ini_after = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    assert AppLocaleStore.get_language() == "ru"
+    assert ini_after == ini_before

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from src.core import AppConfigStore, set_language
-from src.core.app_locale import AppLocaleStore, set_available_languages
+from src.core.app_locale import AppLocaleStore, set_available_languages, set_language_runtime
 from src.core.app_path import resolve_packaged_assets_data_path
 from src.gui.adapters import llm_models as llm_models_adapter_mod
 from src.gui.bootstrap import GUIBootstrap
@@ -82,6 +83,50 @@ def test_gui_bootstrap_and_controller_build_all_screens(tmp_path: Path) -> None:
 
         assert ctrl._gui_layout is not None  # noqa: SLF001
         assert ctrl._router is not None  # noqa: SLF001
+    finally:
+        GUIController._instance = None
+        GUIConfigStore.reset()
+        ModuleConfigStore.reset()
+        reset_llm_model_store()
+        llm_models_adapter_mod._adapters.clear()
+        try:
+            if root.winfo_exists():
+                for child in list(root.winfo_children()):
+                    child.destroy()
+                root.withdraw()
+        except tk.TclError:
+            pass
+
+
+def test_gui_loading_without_language_choice_does_not_persist_language(tmp_path: Path) -> None:
+    """
+    Start GUI with empty [CORE] LANGUAGE and do not click language buttons on loading.
+    app.ini must remain without selected language value.
+    """
+    GUIConfigStore.reset()
+    GUIController._instance = None
+
+    cfg = AppConfigStore.get()
+    AppConfigStore.save(replace(cfg, core=replace(cfg.core, language="")))
+    set_language_runtime("en")
+    module_llm_model_registry_boot(
+        resolve_packaged_assets_data_path("llm_models_registry.json"),
+        tmp_path / "llm_models_registry.json",
+    )
+
+    root = GUIBootstrap.init(tmp_path)
+    root.mainloop = lambda: None  # type: ignore[method-assign]
+
+    try:
+        GUIController.init(tmp_path, root)
+        ctrl = GUIController.get()
+        root.update_idletasks()
+
+        assert ctrl._registry.get("loading") is not None  # noqa: SLF001
+        assert AppConfigStore.get().core.language == ""
+        ini_text = (tmp_path / "app.ini").read_text(encoding="utf-8")
+        assert "LANGUAGE = en" not in ini_text
+        assert "LANGUAGE = ru" not in ini_text
     finally:
         GUIController._instance = None
         GUIConfigStore.reset()

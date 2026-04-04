@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import tkinter as tk
-from dataclasses import replace
 from tkinter import ttk
 from typing import Callable
 
 from src.core import (
     AVAILABLE_LANGUAGES,
-    AppConfigStore,
     language_choice_required,
     locmsg,
     set_language,
 )
-from src.core.app_path import resolve_runtime_root
 from src.gui.screens.base_screen import BaseGUIScreen
 from src.gui.template.styles import PALETTE
 from src.gui.template.styles.theme import SPACING
@@ -48,18 +45,9 @@ class LoadingScreen(BaseGUIScreen):
         self._logo_photo: tk.PhotoImage | None = None
         self._build_ui()
 
-    def _persist_language(self, code: str) -> None:
-        """Persist [CORE] language in app.ini via AppConfigStore.save."""
-        root = self._app_root if self._app_root is not None else resolve_runtime_root()
-        cfg = AppConfigStore.get()
-        new_core = replace(cfg.core, language=code)
-        new_cfg = replace(cfg, core=new_core)
-        AppConfigStore.save(new_cfg, root)
-
     def _on_language_chosen(self, code: str) -> None:
-        """Activate catalog, then persist language in AppConfigStore and app.ini."""
+        """Activate catalog and persist language in app.ini via set_language()."""
         set_language(code)
-        self._persist_language(code)
         self._notify_locale_changed()
         if self._on_language_ready is not None:
             self._on_language_ready()

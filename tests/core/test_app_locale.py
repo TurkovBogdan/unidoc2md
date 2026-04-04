@@ -12,11 +12,13 @@ from src.core import AppConfigStore
 from src.core.app_locale import (
     AVAILABLE_LANGUAGES,
     AppLocaleStore,
+    fallback_language_code,
     first_available_language_code,
     locmsg,
     resolve_packaged_locale_path,
     set_available_languages,
     set_language,
+    set_language_runtime,
 )
 from src.core.app_path import project_root
 
@@ -93,6 +95,26 @@ def test_set_language_persists_to_same_root_as_load_or_create(tmp_path: Path) ->
     assert "en" in ini_text
     if before is not None:
         assert runtime_ini.read_text(encoding="utf-8") == before
+
+
+def test_set_language_runtime_does_not_persist_to_ini(tmp_path: Path) -> None:
+    AppConfigStore.reset()
+    AppConfigStore.load_or_create(tmp_path)
+    set_available_languages({"ru": "Русский", "en": "English"})
+    AppLocaleStore.reset()
+    before = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    set_language_runtime("en")
+    after = (tmp_path / "app.ini").read_text(encoding="utf-8")
+    assert "LANGUAGE = en" not in after
+    assert after == before
+    assert AppLocaleStore.get_language() == "en"
+
+
+def test_fallback_language_code_prefers_en_else_first() -> None:
+    set_available_languages({"ru": "Русский", "en": "English", "zh": "中文"})
+    assert fallback_language_code() == "en"
+    set_available_languages({"ru": "Русский", "zh": "中文"})
+    assert fallback_language_code() == "ru"
 
 
 def test_resolve_packaged_locale_path_source_tree() -> None:

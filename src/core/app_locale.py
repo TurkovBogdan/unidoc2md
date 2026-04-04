@@ -23,6 +23,11 @@ def first_available_language_code() -> str:
     return next(iter(AVAILABLE_LANGUAGES))
 
 
+def fallback_language_code() -> str:
+    """Fallback code for first run: prefer ``en``, else first available."""
+    return "en" if "en" in AVAILABLE_LANGUAGES else first_available_language_code()
+
+
 class JsonTranslations(gettext.NullTranslations):
     """gettext-compatible translator backed by a JSON catalog."""
 
@@ -147,17 +152,28 @@ def set_available_languages(languages: Mapping[str, str]) -> None:
         AppLocaleStore._current_language = first_available_language_code()
 
 
-def set_language(language: str) -> None:
-    """Set active language, persist it, and notify listeners."""
+def _set_language_internal(language: str, *, persist: bool) -> None:
+    """Set active language; optionally persist to config; always notify listeners."""
     previous = AppLocaleStore.get_language()
     AppLocaleStore.set_language(language)
     current_language = AppLocaleStore.get_language()
-    current = AppConfigStore.get()
-    next_config = replace(current, core=replace(current.core, language=current_language))
-    AppConfigStore.save(next_config)
+    if persist:
+        current = AppConfigStore.get()
+        next_config = replace(current, core=replace(current.core, language=current_language))
+        AppConfigStore.save(next_config)
     if current_language != previous:
         for listener in tuple(_LANGUAGE_CHANGE_LISTENERS):
             listener(previous, current_language)
+
+
+def set_language_runtime(language: str) -> None:
+    """Set active language only in runtime memory, without config persistence."""
+    _set_language_internal(language, persist=False)
+
+
+def set_language(language: str) -> None:
+    """Set active language, persist it, and notify listeners."""
+    _set_language_internal(language, persist=True)
 
 
 def add_language_change_listener(listener: Callable[[str, str], None]) -> None:
@@ -186,6 +202,8 @@ def locmsg(message: str) -> str:
 __all__ = [
     "AVAILABLE_LANGUAGES",
     "first_available_language_code",
+    "fallback_language_code",
+    "set_language_runtime",
     "set_language",
     "add_language_change_listener",
     "remove_language_change_listener",

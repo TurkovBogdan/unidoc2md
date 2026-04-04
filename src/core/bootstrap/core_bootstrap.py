@@ -9,10 +9,10 @@ from typing import Callable, Mapping
 from src.core import AppConfigStore
 from src.core.app_locale import (
     AVAILABLE_LANGUAGES,
-    first_available_language_code,
+    fallback_language_code,
     resolve_packaged_locale_path,
     set_available_languages,
-    set_language,
+    set_language_runtime,
 )
 from src.app_path import AppPath
 from src.core.filesystem import ensure_dir
@@ -58,7 +58,8 @@ class CoreBootstrap:
         """
         Register available languages, copy locale JSON into runtime ``assets``,
         apply saved language from ``AppConfigStore`` (``[CORE] LANGUAGE``) if the code is valid;
-        otherwise the first available locale (order as in the passed mapping).
+        otherwise apply fallback locale: ``en`` when available, else first available.
+        Language activation here is runtime-only and does not persist to ``app.ini``.
         """
         if available_languages is None:
             raise ValueError("available_languages must be provided")
@@ -66,9 +67,9 @@ class CoreBootstrap:
         CoreBootstrap._sync_locale_assets(paths)
         saved = (AppConfigStore.get().core.language or "").strip().lower().replace("-", "_")
         if saved and saved in AVAILABLE_LANGUAGES:
-            set_language(saved)
+            set_language_runtime(saved)
         else:
-            set_language(first_available_language_code())
+            set_language_runtime(fallback_language_code())
 
     @classmethod
     def modules_boot(cls, paths: AppPath) -> None:
