@@ -31,7 +31,7 @@ def test_load_project_config_when_no_config_returns_defaults(tmp_path: Path) -> 
     config = load_project_config(tmp_path)
     assert config.project_root == tmp_path
     assert "pdf_extract_provider" in (config.extract or {})
-    assert config.discovery.get("recursive_search") is False
+    assert config.discovery.get("recursive_search") is True
 
 
 def test_load_project_config_reads_existing_config(tmp_path: Path) -> None:
@@ -151,7 +151,7 @@ def test_extract_payload_preserved_on_save_load(tmp_path: Path) -> None:
 
 
 def test_discovery_default_and_roundtrip(tmp_path: Path) -> None:
-    """Missing discovery defaults recursive_search=False; save/load preserve discovery."""
+    """discovery: {} normalizes recursive_search=True; save/load preserve discovery."""
     ensure_project_dirs(tmp_path)
     (tmp_path / "config.json").write_text(
         json.dumps({
@@ -167,7 +167,7 @@ def test_discovery_default_and_roundtrip(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     config = load_project_config(tmp_path)
-    assert config.discovery.get("recursive_search") is False
+    assert config.discovery.get("recursive_search") is True
 
     data = dict(ProjectConfig.create_default_dict())
     data["discovery"] = {"recursive_search": True}

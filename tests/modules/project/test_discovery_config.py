@@ -1,1 +1,36 @@
-"""Tests for the discovery section handler (DiscoveryConfig)."""from src.modules.project.sections import DiscoveryConfigdef test_get_default_returns_dict_with_recursive_search_false() -> None:    default = DiscoveryConfig.get_default()    assert isinstance(default, dict)    assert default.get("recursive_search") is Falsedef test_validate_valid_data_returns_empty_list() -> None:    assert DiscoveryConfig.validate({"recursive_search": False}) == []    assert DiscoveryConfig.validate({"recursive_search": True}) == []def test_validate_non_dict_returns_error() -> None:    errors = DiscoveryConfig.validate(None)    assert len(errors) == 1    assert "объект" in errors[0] or "dict" in errors[0]    assert DiscoveryConfig.validate([]) != []    assert DiscoveryConfig.validate("recursive_search") != []def test_validate_missing_recursive_search_returns_error() -> None:    errors = DiscoveryConfig.validate({})    assert len(errors) == 1    assert "recursive_search" in errors[0]def test_validate_recursive_search_not_bool_returns_error() -> None:    errors = DiscoveryConfig.validate({"recursive_search": "true"})    assert len(errors) == 1    assert "bool" in errors[0] or "true или false" in errors[0]    assert DiscoveryConfig.validate({"recursive_search": 1}) != []    assert DiscoveryConfig.validate({"recursive_search": ""}) != []
+"""Tests for the discovery section handler (DiscoveryConfig)."""
+
+from src.modules.project.sections import DiscoveryConfig
+
+
+def test_get_default_returns_dict_with_recursive_search_true() -> None:
+    default = DiscoveryConfig.get_default()
+    assert isinstance(default, dict)
+    assert default.get("recursive_search") is True
+
+
+def test_validate_valid_data_returns_empty_list() -> None:
+    assert DiscoveryConfig.validate({"recursive_search": False}) == []
+    assert DiscoveryConfig.validate({"recursive_search": True}) == []
+
+
+def test_validate_non_dict_returns_error() -> None:
+    errors = DiscoveryConfig.validate(None)
+    assert len(errors) == 1
+    assert "объект" in errors[0] or "dict" in errors[0]
+    assert DiscoveryConfig.validate([]) != []
+    assert DiscoveryConfig.validate("recursive_search") != []
+
+
+def test_validate_missing_recursive_search_returns_error() -> None:
+    errors = DiscoveryConfig.validate({})
+    assert len(errors) == 1
+    assert "recursive_search" in errors[0]
+
+
+def test_validate_recursive_search_not_bool_returns_error() -> None:
+    errors = DiscoveryConfig.validate({"recursive_search": "true"})
+    assert len(errors) == 1
+    assert "bool" in errors[0] or "true или false" in errors[0]
+    assert DiscoveryConfig.validate({"recursive_search": 1}) != []
+    assert DiscoveryConfig.validate({"recursive_search": ""}) != []

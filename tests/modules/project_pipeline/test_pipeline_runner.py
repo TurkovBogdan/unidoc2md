@@ -358,6 +358,72 @@ def test_pipeline_stages_returns_six_stages() -> None:
     assert type(PIPELINE_STAGES[5]).__name__ == "ResultStage"
 
 
+def test_run_stop_run_does_not_wait_old_run_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Second run should not be blocked by a lock held by a cancelled previous run."""
+    from src.modules.project_pipeline.services import PipelineRunLocker
+    from src.modules.project_pipeline.stages import (
+        BasePipelineStage,
+        PipelineContext,
+        StageResult,
+    )
+
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    run2_entered = threading.Event()
+    calls_lock = threading.Lock()
+    run_calls = {"n": 0}
+
+    class LockingStage(BasePipelineStage):
+        @property
+        def stage_id(self) -> str:
+            return "locking"
+
+        def run(self, context: PipelineContext, input_result: object) -> StageResult:
+            with calls_lock:
+                run_calls["n"] += 1
+                n = run_calls["n"]
+            locker = PipelineRunLocker.create()
+            if n == 1:
+                def hold_old_lock() -> None:
+                    with locker.vision_call():
+                        worker_started.set()
+                        release_worker.wait(timeout=2.0)
+
+                threading.Thread(target=hold_old_lock, daemon=True).start()
+                assert worker_started.wait(timeout=1.0)
+                while context.cancel_event is not None and not context.cancel_event.is_set():
+                    time.sleep(0.01)
+                return StageResult.ok([])
+            with locker.vision_call():
+                run2_entered.set()
+            return StageResult.ok([])
+
+    monkeypatch.setattr(
+        "src.modules.project_pipeline.pipeline_runner.PIPELINE_STAGES",
+        [LockingStage()],
+    )
+
+    storage = PipelineStateStorage()
+    config = ProjectConfig.create_default(tmp_path)
+    runner = PipelineRunner(storage)
+
+    t = threading.Thread(target=lambda: runner.run(config), daemon=True)
+    t.start()
+    assert worker_started.wait(timeout=1.0)
+    storage.request_cancel()
+    t.join(timeout=1.0)
+    assert not t.is_alive()
+
+    started_at = time.perf_counter()
+    assert runner.run(config) is True
+    elapsed = time.perf_counter() - started_at
+    assert elapsed < 0.5
+    assert run2_entered.is_set()
+    release_worker.set()
+
+
 class _FakeLogger:
     def __init__(self, sink) -> None:
         self._sink = sink

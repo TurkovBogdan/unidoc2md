@@ -69,9 +69,22 @@ class BaseProviderClient(ABC):
             ModuleStore.get().response_logger if response_logger is None else response_logger
         )
         self._headers = self._build_headers()
-        connect = float(config.gateway_connect_timeout or 30)
-        read = float(config.gateway_read_timeout or 600)
-        self._timeout: float | tuple[float, float] = (connect, read)
+        self._connect_timeout: float = float(config.gateway_connect_timeout or 60)
+        self._read_timeout: float = float(config.gateway_read_timeout or 600)
+
+    def _apply_read_timeout(self, response: Any) -> None:
+        """
+        Apply read timeout to an opened urllib response socket.
+        urllib exposes only one timeout in urlopen(); we set connect timeout at open(),
+        then switch socket timeout to read timeout before reading the body.
+        """
+        try:
+            sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+            if sock is not None and hasattr(sock, "settimeout"):
+                sock.settimeout(self._read_timeout)
+        except Exception:
+            # Best-effort: keep request flow working even if socket internals differ.
+            return
 
     def _request_base_url(self) -> str:
         """Base URL for HTTP requests; override when URL comes from config (e.g. local LM Studio)."""
@@ -243,8 +256,10 @@ class BaseProviderClient(ABC):
             req = urllib.request.Request(url, headers=merged_headers, method=method.upper())
         ctx = ssl.create_default_context()
         try:
-            # timeout=(connect, read): connect = до установки TCP/TLS; read = до конца тела ответа
-            with urllib.request.urlopen(req, timeout=self._timeout, context=ctx) as resp:
+            with urllib.request.urlopen(
+                req, timeout=self._connect_timeout, context=ctx
+            ) as resp:
+                self._apply_read_timeout(resp)
                 raw_body = resp.read().decode("utf-8")
                 status_code = resp.getcode()
             data = json.loads(raw_body) if raw_body else {}

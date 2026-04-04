@@ -64,7 +64,7 @@ def test_execute_item_dispatches_to_vision_processing(
 
     called: list[str] = []
 
-    def fake_vision_processing(ctx, content_item):
+    def fake_vision_processing(ctx, content_item, **kwargs):
         called.append("vision")
         return content_item
 

@@ -446,6 +446,19 @@ class ImageProcessingSettingsTab(ttk.Frame):
                 grid_sub_block(self._vision_model_settings_frame, self._vision_model_settings_row)
             else:
                 self._vision_model_settings_frame.grid_remove()
+        if show_ocr:
+            ocr_opts = get_ocr_provider_options()
+            cur_ocr = (self._fp_ocr_provider_var.get() or "").strip().lower()
+            ocr_ok = {p.lower() for p in ocr_opts}
+            if ocr_opts and (not cur_ocr or cur_ocr not in ocr_ok):
+                self._fp_ocr_provider_var.set(ocr_opts[0])
+            self._on_fp_ocr_provider_change()
+        if show_vision:
+            vision_opts = get_vision_provider_options()
+            cur_v = (self._fp_vision_provider_var.get() or "").strip()
+            if vision_opts and (not cur_v or cur_v not in vision_opts):
+                self._fp_vision_provider_var.set(vision_opts[0])
+            self._on_fp_vision_provider_change()
 
     def _on_fp_ocr_provider_change(self) -> None:
         provider = (self._fp_ocr_provider_var.get() or "").strip().lower()

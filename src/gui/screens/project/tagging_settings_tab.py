@@ -590,6 +590,11 @@ class TaggingSettingsTab(ttk.Frame):
                 self._model_settings_frame.grid_remove()
         if show_post:
             self._sync_create_tags_dependent_visibility()
+        if show_llm:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
+            self._on_provider_change()
 
     def _on_provider_change(self) -> None:
         provider = (self._provider_var.get() or "").strip()
@@ -602,6 +607,10 @@ class TaggingSettingsTab(ttk.Frame):
         """Refresh provider/model lists when the screen is shown."""
         if self._provider_combo is not None:
             self._provider_combo.set_values(get_chat_provider_options())
+        if self._mode_code in TAGGING_LLM_MODES:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
         self._on_provider_change()
         self._on_mode_change()
         self._sync_create_tags_dependent_visibility()

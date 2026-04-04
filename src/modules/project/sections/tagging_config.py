@@ -46,7 +46,7 @@ TAGGING_PAYLOAD_LOGIC = SimpleNamespace(
 )
 
 TAGGING_DEFAULTS = SimpleNamespace(
-    tagging_mode=TAGGING_MODES.create_document_tags_parallel,
+    tagging_mode=TAGGING_MODES.skip,
     tag_format="Tag_name",
     create_tags_field=True,
     create_description_field=True,

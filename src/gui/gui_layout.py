@@ -41,6 +41,7 @@ class GUILayout:
         self._slots["content_console"] = content_console_result.frame
         self.content_console_top = content_console_result.content_top
         self.log_text = content_console_result.log_text
+        self.console_title_label = content_console_result.console_title_label
 
         # Modal layer above current layout (color from styles.PALETTE["modal_overlay"])
         self._modal_layer = tk.Frame(self.container, bg=PALETTE["modal_overlay"])

@@ -42,7 +42,7 @@ class DiscoveryStage(BasePipelineStage):
             path=str(context.config.paths.docs),
             extensions=extensions,
             hash=True,
-            recursive_search=context.config.discovery.get("recursive_search", False),
+            recursive_search=context.config.discovery.get("recursive_search", True),
         )
         discovery_service = DiscoveryService()
         hash_sidecar_service = HashSidecarService()

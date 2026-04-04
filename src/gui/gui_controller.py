@@ -79,6 +79,13 @@ class GUIController:
 
     def notify_locale_changed(self) -> None:
         """After set_language: refresh labels on already-built screens."""
+        if self._gui_layout is not None:
+            try:
+                self._gui_layout.console_title_label.configure(
+                    text=locmsg("project_execution.console_title")
+                )
+            except tk.TclError:
+                pass
         for key in (
             "project_list",
             "settings",

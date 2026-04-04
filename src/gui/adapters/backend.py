@@ -42,7 +42,7 @@ def _docs_count_for_project(project_root: Path) -> int:
             path=str(docs_dir),
             extensions=extensions,
             hash=False,
-            recursive_search=config.discovery.get("recursive_search", False),
+            recursive_search=config.discovery.get("recursive_search", True),
         )
         return len(discovery.discover_files(discovery_config))
     except Exception:

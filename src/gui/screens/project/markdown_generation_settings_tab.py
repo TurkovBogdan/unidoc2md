@@ -346,6 +346,11 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
                 grid_sub_block(self._model_settings_frame, self._model_settings_row)
             else:
                 self._model_settings_frame.grid_remove()
+        if code == MARKDOWN_LOGICS.llm_processing:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
+            self._on_provider_change()
 
     def _on_provider_change(self) -> None:
         provider = (self._provider_var.get() or "").strip()
@@ -358,6 +363,10 @@ class MarkdownGenerationSettingsTab(ttk.Frame):
         """Refresh provider/model lists when the screen is shown."""
         if self._provider_combo is not None:
             self._provider_combo.set_values(get_chat_provider_options())
+        if self._logic_code == MARKDOWN_LOGICS.llm_processing:
+            opts = get_chat_provider_options()
+            if opts and (not self._provider_var.get() or self._provider_var.get() not in opts):
+                self._provider_var.set(opts[0])
         self._on_provider_change()
         self._on_logic_change()
 

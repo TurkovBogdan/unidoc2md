@@ -103,7 +103,7 @@ def test_map_exception_json_decode_is_response_error():
     assert isinstance(out, LLMProviderClientError)
 
 
-def test_send_request_passes_connect_and_read_timeouts_to_urlopen():
+def test_send_request_passes_connect_timeout_to_urlopen():
     config = LLMProvidersConfig(gateway_connect_timeout=12, gateway_read_timeout=345)
     logger = MagicMock()
     gw = _ConcreteProvider(config, logger)
@@ -129,7 +129,43 @@ def test_send_request_passes_connect_and_read_timeouts_to_urlopen():
 
     assert urlopen_mock.call_count == 1
     _args, kwargs = urlopen_mock.call_args
-    assert kwargs.get("timeout") == (12.0, 345.0)
+    assert kwargs.get("timeout") == 12.0
+
+
+def test_send_request_applies_read_timeout_to_response_socket():
+    config = LLMProvidersConfig(gateway_connect_timeout=12, gateway_read_timeout=345)
+    logger = MagicMock()
+    gw = _ConcreteProvider(config, logger)
+    socket_mock = MagicMock()
+
+    class Raw:
+        _sock = socket_mock
+
+    class FP:
+        raw = Raw()
+
+    class FakeResponse:
+        fp = FP()
+
+        def read(self):
+            return b"{}"
+
+        def getcode(self):
+            return 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    with patch(
+        "src.modules.llm_providers.interfaces.provider_client.urllib.request.urlopen",
+        return_value=FakeResponse(),
+    ):
+        gw._send_get_request("/v1/models")
+
+    socket_mock.settimeout.assert_called_once_with(345.0)
 
 
 def test_send_get_request_success_logs_raw_response():

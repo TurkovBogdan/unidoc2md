@@ -28,6 +28,10 @@ from src.modules.project.sections.pipeline_config import (
     IMAGE_PROCESSING_THREADS_MIN,
     KEY_IMAGE_PROCESSING_THREADS,
 )
+from src.modules.project_pipeline.services import (
+    PipelineLockCancelled,
+    PipelineRunLocker,
+)
 from ..base import BasePipelineStage
 from ...models import (
     PipelineContext,
@@ -78,10 +82,6 @@ class _VisionUsageAcc(TypedDict):
 
 class ImageProcessingStage(BasePipelineStage):
     """Image processing в извлечённых документах: OCR или Vision LLM."""
-
-    _vision_llm_call_lock = threading.Lock()
-    # На время run() для vision / ocr: lock + счётчики (LLM токены или OCR кеш/API).
-    _image_usage_state: tuple[threading.Lock, _VisionUsageAcc] | None = None
 
     @property
     def stage_id(self) -> str:
@@ -166,11 +166,7 @@ class ImageProcessingStage(BasePipelineStage):
                 price_in if price_in is not None else "—",
                 price_out if price_out is not None else "—",
             )
-            self._image_usage_state = (usage_lock, usage_acc)
-        elif logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
-            self._image_usage_state = (usage_lock, usage_acc)
-        else:
-            self._image_usage_state = None
+        run_locker = PipelineRunLocker.create()
 
         def _payload() -> dict[str, Any]:
             return self._image_processing_summary_payload(
@@ -196,55 +192,55 @@ class ImageProcessingStage(BasePipelineStage):
                 images_total=images_total,
             )
 
-        try:
-            if total_images == 0:
-                context.logger.info(
-                    "Image processing: no images to process"
-                )
-                return StageResult.ok(processed_documents, payload=[_payload()])
-
-            _emit_progress(0, total_images)
-
-            def process_one(item: ExtractedDocumentContent) -> ExtractedDocumentContent:
-                return self._execute_item(context, item)
-
-            def handle_result(
-                meta: tuple[int, int, str], result: ExtractedDocumentContent
-            ) -> None:
-                doc_index, item_index, _ = meta
-                doc = processed_documents[doc_index]
-                if doc is not None:
-                    doc.content[item_index] = result
-
-            def on_images_progress(done: int, total: int) -> None:
-                _emit_progress(done, total)
-
-            run_parallel_stage(
-                stage_name="Image processing",
-                logger=context.logger,
-                task_items=task_items,
-                max_workers=threads,
-                cancel_event=context.cancel_event,
-                worker=process_one,
-                handle_result=handle_result,
-                describe_item=lambda meta: f"{meta[2]}[{meta[1] + 1}]",
-                on_progress=on_images_progress,
-            )
-            processed_count = sum(
-                1
-                for doc in processed_documents
-                if doc is not None
-                and any(
-                    item.content_type == "text" and item.path is None
-                    for item in doc.content
-                )
-            )
-            context.logger.info(
-                "Image processing: processed %s documents", processed_count
-            )
+        if total_images == 0:
+            context.logger.info("Image processing: no images to process")
             return StageResult.ok(processed_documents, payload=[_payload()])
-        finally:
-            self._image_usage_state = None
+
+        _emit_progress(0, total_images)
+
+        def process_one(item: ExtractedDocumentContent) -> ExtractedDocumentContent:
+            return self._execute_item(
+                context,
+                item,
+                usage_state=(usage_lock, usage_acc),
+                run_locker=run_locker,
+            )
+
+        def handle_result(
+            meta: tuple[int, int, str], result: ExtractedDocumentContent
+        ) -> None:
+            doc_index, item_index, _ = meta
+            doc = processed_documents[doc_index]
+            if doc is not None:
+                doc.content[item_index] = result
+
+        def on_images_progress(done: int, total: int) -> None:
+            _emit_progress(done, total)
+
+        run_parallel_stage(
+            stage_name="Image processing",
+            logger=context.logger,
+            task_items=task_items,
+            max_workers=threads,
+            cancel_event=context.cancel_event,
+            worker=process_one,
+            handle_result=handle_result,
+            describe_item=lambda meta: f"{meta[2]}[{meta[1] + 1}]",
+            on_progress=on_images_progress,
+        )
+        processed_count = sum(
+            1
+            for doc in processed_documents
+            if doc is not None
+            and any(
+                item.content_type == "text" and item.path is None
+                for item in doc.content
+            )
+        )
+        context.logger.info(
+            "Image processing: processed %s documents", processed_count
+        )
+        return StageResult.ok(processed_documents, payload=[_payload()])
 
     def _get_processing_logic(self, config: Any) -> str:
         section = config.image_processing or {}
@@ -371,6 +367,9 @@ class ImageProcessingStage(BasePipelineStage):
         self,
         context: PipelineContext,
         item: ExtractedDocumentContent,
+        *,
+        usage_state: tuple[threading.Lock, _VisionUsageAcc] | None = None,
+        run_locker: PipelineRunLocker | None = None,
     ) -> ExtractedDocumentContent:
         if context.cancel_event is not None and context.cancel_event.is_set():
             return item
@@ -380,15 +379,22 @@ class ImageProcessingStage(BasePipelineStage):
             return item
         logic = self._get_processing_logic(context.config)
         if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.ocr:
-            return self._ocr_processing(context, item)
+            return self._ocr_processing(context, item, usage_state=usage_state)
         if logic == ImageProcessingConfig.IMAGE_PROCESSING_LOGICS.vision:
-            return self._vision_processing(context, item)
+            return self._vision_processing(
+                context,
+                item,
+                usage_state=usage_state,
+                run_locker=run_locker,
+            )
         return item
 
     def _ocr_processing(
         self,
         context: PipelineContext,
         item: ExtractedDocumentContent,
+        *,
+        usage_state: tuple[threading.Lock, _VisionUsageAcc] | None = None,
     ) -> ExtractedDocumentContent:
         from pathlib import Path
 
@@ -414,7 +420,6 @@ class ImageProcessingStage(BasePipelineStage):
         result = gateway.recognize_single(
             request, cancel_event=context.cancel_event
         )
-        usage_state = self._image_usage_state
         if usage_state is not None:
             lock, acc = usage_state
             with lock:
@@ -437,6 +442,9 @@ class ImageProcessingStage(BasePipelineStage):
         self,
         context: PipelineContext,
         item: ExtractedDocumentContent,
+        *,
+        usage_state: tuple[threading.Lock, _VisionUsageAcc] | None = None,
+        run_locker: PipelineRunLocker | None = None,
     ) -> ExtractedDocumentContent:
         import base64
         from pathlib import Path
@@ -524,7 +532,8 @@ class ImageProcessingStage(BasePipelineStage):
             max_tokens=4096,
         )
         try:
-            with self._vision_llm_call_lock:
+            call_lock = run_locker if run_locker is not None else PipelineRunLocker.create()
+            with call_lock.vision_call(cancel_event=context.cancel_event):
                 prev_cache = None
                 try:
                     prev_cache = ModuleStore.get().cache_path
@@ -536,6 +545,8 @@ class ImageProcessingStage(BasePipelineStage):
                     response = llm.chat(request, cache=True)
                 finally:
                     llm_providers_set_cache_path(prev_cache)
+        except PipelineLockCancelled:
+            return item
         except Exception as e:
             from src.core.logger import get_system_logger
 
@@ -545,7 +556,6 @@ class ImageProcessingStage(BasePipelineStage):
             raise
         if context.cancel_event is not None and context.cancel_event.is_set():
             return item
-        usage_state = self._image_usage_state
         if usage_state is not None:
             lock, acc = usage_state
             with lock:

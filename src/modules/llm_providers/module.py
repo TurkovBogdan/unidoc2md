@@ -33,7 +33,7 @@ class LLMProvidersConfig:
     lmstudio_port: str = ""
     lmstudio_ssl: bool = False
     lmstudio_api_key: str = ""
-    gateway_connect_timeout: int = 30
+    gateway_connect_timeout: int = 60
     gateway_read_timeout: int = 600
 
     def is_provider_available(self, provider_code: str) -> bool:

@@ -51,7 +51,10 @@ def build_content_console_slot(parent: tk.Misc) -> ContentConsoleSlotResult:
 
     header_frame = ttk.Frame(bottom_container)
     header_frame.pack(fill=tk.X, padx=(0, 0), pady=(0, 0))
-    ttk.Label(header_frame, text=locmsg("project_execution.console_title")).pack(anchor=tk.W)
+    console_title_label = ttk.Label(
+        header_frame, text=locmsg("project_execution.console_title")
+    )
+    console_title_label.pack(anchor=tk.W)
 
     log_container = ttk.Frame(bottom_container)
     log_container.pack(fill=tk.BOTH, expand=True)
@@ -61,6 +64,7 @@ def build_content_console_slot(parent: tk.Misc) -> ContentConsoleSlotResult:
         frame=frame,
         content_top=content_top,
         log_text=log_text,
+        console_title_label=console_title_label,
     )
 
 
@@ -77,14 +81,16 @@ class ContentSlotResult:
 class ContentConsoleSlotResult:
     """Return value of ``build_content_console_slot``: slot frame, screen area, log widget."""
 
-    __slots__ = ("frame", "content_top", "log_text")
+    __slots__ = ("frame", "content_top", "log_text", "console_title_label")
 
     def __init__(
         self,
         frame: ttk.Frame,
         content_top: ttk.Frame,
         log_text: tk.Text,
+        console_title_label: ttk.Label,
     ) -> None:
         self.frame = frame
         self.content_top = content_top
         self.log_text = log_text
+        self.console_title_label = console_title_label

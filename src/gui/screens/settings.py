@@ -414,7 +414,7 @@ class SettingsScreen(BaseGUIScreen):
             )
             self._llm_api_key_labels.append(lw)
             entry = gui_element_input_text(
-                key_row, textvariable=var, width=28
+                key_row, textvariable=var, width=28, show="*"
             )
             sub.finish_field_row(key_row, lw, entry)
 
@@ -521,7 +521,9 @@ class SettingsScreen(BaseGUIScreen):
         sub.finish_field_row(
             token_row,
             tl,
-            gui_element_input_text(token_row, textvariable=token_var, width=28),
+            gui_element_input_text(
+                token_row, textvariable=token_var, width=28, show="*"
+            ),
         )
         token_desc = gui_element_input_description(
             sub_frame,
@@ -663,7 +665,9 @@ class SettingsScreen(BaseGUIScreen):
                 row, f"{locmsg(msg_key)}:", wraplength=cfg["column_label_px"]
             )
             self._ocr_form_locale_refs[f"label_{key}"] = lw
-            entry = gui_element_input_text(row, textvariable=var, width=28)
+            entry = gui_element_input_text(
+                row, textvariable=var, width=28, show="*"
+            )
             sub.finish_field_row(row, lw, entry)
 
     def _top_panel(self) -> None:
