@@ -1,1 +1,20 @@
-"""Discovered file model: path (absolute, POSIX), folder, filename without extension, extension, mime, hash."""from __future__ import annotationsfrom dataclasses import dataclass@dataclassclass DiscoveredDocument:    """A file discovered during directory traversal."""    # Absolute path to the file in unified form (POSIX: forward slash) for Windows / Linux / macOS.    path: str    # Path to the file's parent folder relative to docs (traversal root), normalized (POSIX). "" or "." means file at root.    folder: str    # Filename without extension.    filename: str    extension: str    mime_type: str | None    hash: str | None
+"""Discovered file model: path (absolute, POSIX), folder, filename without extension, extension, mime, hash."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class DiscoveredDocument:
+    """A file discovered during directory traversal."""
+
+    # Absolute path to the file in unified form (POSIX: forward slash) for Windows / Linux / macOS.
+    path: str
+    # Path to the file's parent folder relative to docs (traversal root), normalized (POSIX). "" or "." means file at root.
+    folder: str
+    # Filename without extension.
+    filename: str
+    extension: str
+    mime_type: str | None
+    hash: str | None

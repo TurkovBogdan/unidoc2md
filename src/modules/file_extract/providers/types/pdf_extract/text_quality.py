@@ -1,1 +1,45 @@
-"""Heuristics for low-quality OCR text detection."""from __future__ import annotationsimport re_TOKEN_RE = re.compile(r"\S+")_ALNUM_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9]")def is_low_quality_ocr_text(text: str) -> bool:    """Return True when text looks like broken OCR output."""    normalized = (text or "").strip()    if not normalized:        return True    if len(normalized) < 40:        return False    tokens = _TOKEN_RE.findall(normalized)    if not tokens:        return True    total_chars = len(normalized)    alnum_chars = len(_ALNUM_RE.findall(normalized))    replacement_char_count = normalized.count("\uFFFD")    bad_symbol_count = sum(1 for ch in normalized if not (ch.isalnum() or ch.isspace() or ch in ".,:;!?-()[]{}%/\\\"'`|@#&*+="))    short_tokens = sum(1 for t in tokens if len(t) <= 2)    long_tokens = sum(1 for t in tokens if len(t) >= 4)    alnum_ratio = alnum_chars / max(1, total_chars)    bad_symbol_ratio = bad_symbol_count / max(1, total_chars)    replacement_ratio = replacement_char_count / max(1, total_chars)    short_token_ratio = short_tokens / max(1, len(tokens))    long_token_ratio = long_tokens / max(1, len(tokens))    if alnum_ratio < 0.45:        return True    if bad_symbol_ratio > 0.20:        return True    if replacement_ratio > 0.01:        return True    if short_token_ratio > 0.70 and long_token_ratio < 0.15:        return True    return False
+"""Heuristics for low-quality OCR text detection."""
+
+from __future__ import annotations
+
+import re
+
+_TOKEN_RE = re.compile(r"\S+")
+_ALNUM_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9]")
+
+
+def is_low_quality_ocr_text(text: str) -> bool:
+    """Return True when text looks like broken OCR output."""
+    normalized = (text or "").strip()
+    if not normalized:
+        return True
+    if len(normalized) < 40:
+        return False
+
+    tokens = _TOKEN_RE.findall(normalized)
+    if not tokens:
+        return True
+
+    total_chars = len(normalized)
+    alnum_chars = len(_ALNUM_RE.findall(normalized))
+    replacement_char_count = normalized.count("\uFFFD")
+    bad_symbol_count = sum(1 for ch in normalized if not (ch.isalnum() or ch.isspace() or ch in ".,:;!?-()[]{}%/\\\"'`|@#&*+="))
+
+    short_tokens = sum(1 for t in tokens if len(t) <= 2)
+    long_tokens = sum(1 for t in tokens if len(t) >= 4)
+
+    alnum_ratio = alnum_chars / max(1, total_chars)
+    bad_symbol_ratio = bad_symbol_count / max(1, total_chars)
+    replacement_ratio = replacement_char_count / max(1, total_chars)
+    short_token_ratio = short_tokens / max(1, len(tokens))
+    long_token_ratio = long_tokens / max(1, len(tokens))
+
+    if alnum_ratio < 0.45:
+        return True
+    if bad_symbol_ratio > 0.20:
+        return True
+    if replacement_ratio > 0.01:
+        return True
+    if short_token_ratio > 0.70 and long_token_ratio < 0.15:
+        return True
+    return False

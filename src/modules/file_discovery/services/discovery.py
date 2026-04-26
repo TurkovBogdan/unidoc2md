@@ -1,1 +1,75 @@
-"""Read-only directory traversal and file filtering."""from __future__ import annotationsimport mimetypesimport threadingfrom pathlib import Pathfrom ..errors import FileDiscoveryPathNotFoundErrorfrom ..models import DiscoveredDocument, DiscoveryConfig# Extensions we always skip (sidecar, executables, scripts). Independent of config.extensions.SKIP_EXTENSIONS: frozenset[str] = frozenset({    ".md5",    ".exe", ".com", ".msi", ".bat", ".cmd", ".ps1",    ".sh", ".bash", ".zsh", ".csh",})class DiscoveryService:    """Directory traversal and filtering by extension. Does not write sidecar .md5."""    def discover_files(        self,        config: DiscoveryConfig,        cancel_event: threading.Event | None = None,    ) -> list[DiscoveredDocument]:        """        Traverse directory per config, return list of documents (hash is always None).        Raises FileDiscoveryPathNotFoundError if path does not exist or is not a directory.        """        root = Path(config.path).resolve()        if not root.exists():            raise FileDiscoveryPathNotFoundError(f"Path does not exist: {root}")        if not root.is_dir():            raise FileDiscoveryPathNotFoundError(f"Path is not a directory: {root}")        paths_iter = root.rglob("*") if config.recursive_search else root.iterdir()        extensions = config.extensions        accept_all = "*" in extensions        normalized_exts = {            e.lower() if e.startswith(".") else f".{e.lower()}"            for e in extensions            if e != "*"        }        documents: list[DiscoveredDocument] = []        for path in paths_iter:            if cancel_event is not None and cancel_event.is_set():                break            path = Path(path)            if not path.is_file():                continue            ext = path.suffix.lower() or ""            if ext in SKIP_EXTENSIONS:                continue            if not accept_all and ext not in normalized_exts:                continue            mime_type, _ = mimetypes.guess_type(str(path))            abs_path_posix = path.resolve().as_posix()            rel_to_root = path.relative_to(root)            # Path to file's folder relative to docs, normalized (POSIX). "." when file is at root.            folder = rel_to_root.parent.as_posix()            documents.append(                DiscoveredDocument(                    path=abs_path_posix,                    folder=folder,                    filename=path.stem,                    extension=path.suffix.lower() or "",                    mime_type=mime_type,                    hash=None,                )            )        return documents
+"""Read-only directory traversal and file filtering."""
+
+from __future__ import annotations
+
+import mimetypes
+import threading
+from pathlib import Path
+
+from ..errors import FileDiscoveryPathNotFoundError
+from ..models import DiscoveredDocument, DiscoveryConfig
+
+# Extensions we always skip (sidecar, executables, scripts). Independent of config.extensions.
+SKIP_EXTENSIONS: frozenset[str] = frozenset({
+    ".md5",
+    ".exe", ".com", ".msi", ".bat", ".cmd", ".ps1",
+    ".sh", ".bash", ".zsh", ".csh",
+})
+
+
+class DiscoveryService:
+    """Directory traversal and filtering by extension. Does not write sidecar .md5."""
+
+    def discover_files(
+        self,
+        config: DiscoveryConfig,
+        cancel_event: threading.Event | None = None,
+    ) -> list[DiscoveredDocument]:
+        """
+        Traverse directory per config, return list of documents (hash is always None).
+        Raises FileDiscoveryPathNotFoundError if path does not exist or is not a directory.
+        """
+        root = Path(config.path).resolve()
+        if not root.exists():
+            raise FileDiscoveryPathNotFoundError(f"Path does not exist: {root}")
+        if not root.is_dir():
+            raise FileDiscoveryPathNotFoundError(f"Path is not a directory: {root}")
+
+        paths_iter = root.rglob("*") if config.recursive_search else root.iterdir()
+        extensions = config.extensions
+        accept_all = "*" in extensions
+        normalized_exts = {
+            e.lower() if e.startswith(".") else f".{e.lower()}"
+            for e in extensions
+            if e != "*"
+        }
+
+        documents: list[DiscoveredDocument] = []
+        for path in paths_iter:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            path = Path(path)
+            if not path.is_file():
+                continue
+            ext = path.suffix.lower() or ""
+            if ext in SKIP_EXTENSIONS:
+                continue
+            if not accept_all and ext not in normalized_exts:
+                continue
+
+            mime_type, _ = mimetypes.guess_type(str(path))
+            abs_path_posix = path.resolve().as_posix()
+            rel_to_root = path.relative_to(root)
+            # Path to file's folder relative to docs, normalized (POSIX). "." when file is at root.
+            folder = rel_to_root.parent.as_posix()
+            documents.append(
+                DiscoveredDocument(
+                    path=abs_path_posix,
+                    folder=folder,
+                    filename=path.stem,
+                    extension=path.suffix.lower() or "",
+                    mime_type=mime_type,
+                    hash=None,
+                )
+            )
+        return documents

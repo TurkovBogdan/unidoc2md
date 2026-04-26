@@ -1,1 +1,13 @@
-"""Пайплайн обработки проектов."""from .pipeline_state_storage import (    PipelineStateStorage,    RunState,    get_default_storage,)__all__ = [    "PipelineStateStorage",    "RunState",    "get_default_storage",]
+"""Пайплайн обработки проектов."""
+
+from .pipeline_state_storage import (
+    PipelineStateStorage,
+    RunState,
+    get_default_storage,
+)
+
+__all__ = [
+    "PipelineStateStorage",
+    "RunState",
+    "get_default_storage",
+]

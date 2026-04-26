@@ -1,1 +1,42 @@
-"""Tests for markdown normalization (tables and the central API)."""from __future__ import annotationsimport pytestfrom src.modules.markdown.utils import normalize_markdown, normalize_markdown_tablesdef test_normalizes_table_with_spaces_around_pipes() -> None:    raw = """|Наименование|Результат|Ед. изм.|Реф. значение|Комментарий||---|---|---|---|---||Мочевина|4.6|ммоль/л|2,8 - 7,2||"""    expected = """| Наименование | Результат | Ед. изм. | Реф. значение | Комментарий || --- | --- | --- | --- | --- || Мочевина | 4.6 | ммоль/л | 2,8 - 7,2 | |"""    assert normalize_markdown_tables(raw) == expecteddef test_leaves_non_table_lines_unchanged() -> None:    text = "# Заголовок\n\nОбычный параграф.\n\n|a|b|\n|---|---|\n|x|y|"    got = normalize_markdown_tables(text)    assert got.startswith("# Заголовок")    assert "Обычный параграф." in got    assert "| a | b |" in got    assert "| --- | --- |" in got    assert "| x | y |" in gotdef test_empty_string_unchanged() -> None:    assert normalize_markdown_tables("") == ""def test_no_tables_unchanged() -> None:    text = "Только текст без таблиц."    assert normalize_markdown_tables(text) == textdef test_normalize_markdown_applies_table_normalization() -> None:    raw = "|a|b|\n|---|---|\n|x|y|"    assert normalize_markdown(raw) == normalize_markdown_tables(raw)    assert "| a | b |" in normalize_markdown(raw)
+"""Tests for markdown normalization (tables and the central API)."""
+
+from __future__ import annotations
+
+import pytest
+
+from src.modules.markdown.utils import normalize_markdown, normalize_markdown_tables
+
+
+def test_normalizes_table_with_spaces_around_pipes() -> None:
+    raw = """|Наименование|Результат|Ед. изм.|Реф. значение|Комментарий|
+|---|---|---|---|---|
+|Мочевина|4.6|ммоль/л|2,8 - 7,2||"""
+    expected = """| Наименование | Результат | Ед. изм. | Реф. значение | Комментарий |
+| --- | --- | --- | --- | --- |
+| Мочевина | 4.6 | ммоль/л | 2,8 - 7,2 | |"""
+    assert normalize_markdown_tables(raw) == expected
+
+
+def test_leaves_non_table_lines_unchanged() -> None:
+    text = "# Заголовок\n\nОбычный параграф.\n\n|a|b|\n|---|---|\n|x|y|"
+    got = normalize_markdown_tables(text)
+    assert got.startswith("# Заголовок")
+    assert "Обычный параграф." in got
+    assert "| a | b |" in got
+    assert "| --- | --- |" in got
+    assert "| x | y |" in got
+
+
+def test_empty_string_unchanged() -> None:
+    assert normalize_markdown_tables("") == ""
+
+
+def test_no_tables_unchanged() -> None:
+    text = "Только текст без таблиц."
+    assert normalize_markdown_tables(text) == text
+
+
+def test_normalize_markdown_applies_table_normalization() -> None:
+    raw = "|a|b|\n|---|---|\n|x|y|"
+    assert normalize_markdown(raw) == normalize_markdown_tables(raw)
+    assert "| a | b |" in normalize_markdown(raw)

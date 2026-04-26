@@ -1,1 +1,237 @@
-"""Google provider — model listing and chat completion (Gemini API)."""from __future__ import annotationsimport jsonimport timefrom urllib.parse import quotefrom ...errors import LLMProviderAuthError, LLMProviderContentFilterErrorfrom ...interfaces.provider_client import BaseProviderClientfrom ...schemas.chat import (    LLM_CHAT_FINISH_CONTENT_FILTER,    LLM_CHAT_FINISH_LENGTH,    LLM_CHAT_FINISH_STOP,    LLMChatReasoningEffort,    LLMChatMessage,    LLMChatMessageImage,    LLMChatMessageText,    LLMChatRequest,    LLMChatResponse,    LLMChatRole,)from ...schemas.models import LLMModelInfo, LLMModelsRequest, LLMModelsResponse_TEXT_METHODS = {    "generateContent",    "generateMessage",    "generateText",}def _extract_model_code(item: dict) -> str:    for key in ("name", "baseModelId", "displayName"):        value = item.get(key)        if value is None:            continue        model_code = str(value).strip()        if not model_code:            continue        if model_code.startswith("models/"):            return model_code.removeprefix("models/")        return model_code    return ""def _get_supported_methods(item: dict) -> set[str]:    raw = item.get("supportedGenerationMethods")    if not isinstance(raw, list):        return set()    return {str(method).strip() for method in raw if str(method).strip()}def _has_text_support(item: dict) -> bool:    methods = _get_supported_methods(item)    return bool(methods & _TEXT_METHODS)class GoogleProvider(BaseProviderClient):    PROVIDER_CODE = "google"    BASE_URL = "https://generativelanguage.googleapis.com"    ROLE_MAP = {        LLMChatRole.SYSTEM: LLMChatRole.SYSTEM.value,        LLMChatRole.USER: LLMChatRole.USER.value,        LLMChatRole.ASSISTANT: "model",    }    THINKING_BUDGET_MAP = {        LLMChatReasoningEffort.LOW: 1024,        LLMChatReasoningEffort.MEDIUM: 8192,        LLMChatReasoningEffort.HIGH: 24576,    }    FINISH_REASON_MAP = {        "STOP": LLM_CHAT_FINISH_STOP,        "MAX_TOKENS": LLM_CHAT_FINISH_LENGTH,        "SAFETY": LLM_CHAT_FINISH_CONTENT_FILTER,        "RECITATION": LLM_CHAT_FINISH_CONTENT_FILTER,    }    def _build_headers(self) -> dict[str, str]:        return {}    def parse_error_message(self, status_code: int, body_raw: str) -> str | None:        try:            data = json.loads(body_raw) if body_raw.strip() else {}        except (json.JSONDecodeError, TypeError):            return None        if not isinstance(data, dict):            return None        err = data.get("error")        if isinstance(err, dict) and err.get("message"):            return str(err["message"]).strip() or None        return None    def _fetch_models(self) -> list[dict]:        api_key = (self._config.google_api_key or "").strip()        if not api_key:            return []        endpoint = f"/v1beta/models?key={quote(api_key, safe='')}"        data = self._send_get_request(endpoint)        raw = data.get("models") if isinstance(data, dict) else None        if not isinstance(raw, list):            return []        return [item for item in raw if isinstance(item, dict)]    def models(self, request: LLMModelsRequest) -> LLMModelsResponse:        result: list[LLMModelInfo] = []        for item in self._fetch_models():            model_code = _extract_model_code(item)            if not model_code or not _has_text_support(item):                continue            result.append(                LLMModelInfo(                    provider=self.provider_code,                    model=model_code,                    created=0,                )            )        return LLMModelsResponse(provider=self.provider_code, models=tuple(result))    def chat(self, request: LLMChatRequest, *, cache: bool = False) -> LLMChatResponse:        """Send chat completion request to Google Gemini API."""        api_key = (self._config.google_api_key or "").strip()        if not api_key:            raise LLMProviderAuthError("Google API key is not configured")        model = request.model.strip()        endpoint = f"/v1beta/models/{model}:generateContent?key={quote(api_key, safe='')}"        system_parts: list[dict] = []        contents: list[dict] = []        for msg in request.messages:            parts = self._convert_parts(msg.content)            if msg.role == LLMChatRole.SYSTEM:                system_parts.extend(parts)            else:                role = self._map_role(msg.role)                contents.append({"role": role, "parts": parts})        body: dict = {"contents": contents}        if system_parts:            body["systemInstruction"] = {"parts": system_parts}        generation_config: dict = {"maxOutputTokens": request.max_tokens}        if request.temperature is not None:            generation_config["temperature"] = request.temperature        if request.top_p is not None:            generation_config["topP"] = request.top_p        budget = self._map_thinking_budget(request.reasoning, disabled_budget=0)        if budget is not None:            generation_config["thinkingConfig"] = {                "thinkingBudget": budget,                "includeThoughts": True            }        body["generationConfig"] = generation_config        data = self._send_post_request(endpoint, body, endpoint_name="generateContent")        prompt_feedback = data.get("promptFeedback") if isinstance(data, dict) else None        candidates = data.get("candidates") if isinstance(data, dict) else None        if (not candidates or not isinstance(candidates, list)) and isinstance(prompt_feedback, dict):            block_reason = (prompt_feedback.get("blockReason") or "OTHER").strip() or "OTHER"            raise LLMProviderContentFilterError(                f"Content blocked by provider (blockReason={block_reason})"            )        return self._parse_chat_response(request, data)    def _convert_parts(        self, content: list[LLMChatMessageText | LLMChatMessageImage]    ) -> list[dict]:        """Convert message content list to Google API parts format."""        parts: list[dict] = []        for item in content:            if isinstance(item, LLMChatMessageText):                parts.append({"text": item.message})            elif isinstance(item, LLMChatMessageImage):                parts.append({                    "inlineData": {                        "mimeType": item.mime,                        "data": item.base64,                    },                })        return parts    def _parse_chat_response(self, request: LLMChatRequest, data: dict) -> LLMChatResponse:        """Parse Gemini generateContent response into LLMChatResponse."""        candidates = data.get("candidates") or []        if not candidates:            raise self._map_exception(                ValueError("No candidates in response"),                "Empty candidates array in Gemini response",            )        candidate = candidates[0]        content = candidate.get("content", {})        parts = content.get("parts") or []        thought_parts = [            p.get("text", "")            for p in parts            if p.get("thought") is True and "text" in p        ]        text_parts = [            p["text"]            for p in parts            if "text" in p and p.get("thought") is not True        ]        reasoning_text = "".join(thought_parts)        response_text = "".join(text_parts)        finish_reason = self._normalize_finish_reason(candidate.get("finishReason"))        usage_meta = data.get("usageMetadata") or {}        tokens_usage = (            self._create_tokens_usage(                prompt=usage_meta.get("promptTokenCount", 0),                reasoning=usage_meta.get("thoughtsTokenCount", 0),                completion=usage_meta.get("candidatesTokenCount", 0),                total=usage_meta.get("totalTokenCount", 0),            )            if usage_meta            else None        )        response_message = LLMChatMessage(            role=LLMChatRole.ASSISTANT,            content=[LLMChatMessageText(message=response_text)],        )        return LLMChatResponse(            response_id=data.get("modelVersion") or None,            message=response_message,            finish_reason=finish_reason,            created=int(time.time()),            tokens_usage=tokens_usage,            message_reasoning=reasoning_text,        )
+"""Google provider — model listing and chat completion (Gemini API)."""
+
+from __future__ import annotations
+
+import json
+import time
+from urllib.parse import quote
+
+from ...errors import LLMProviderAuthError, LLMProviderContentFilterError
+from ...interfaces.provider_client import BaseProviderClient
+from ...schemas.chat import (
+    LLM_CHAT_FINISH_CONTENT_FILTER,
+    LLM_CHAT_FINISH_LENGTH,
+    LLM_CHAT_FINISH_STOP,
+    LLMChatReasoningEffort,
+    LLMChatMessage,
+    LLMChatMessageImage,
+    LLMChatMessageText,
+    LLMChatRequest,
+    LLMChatResponse,
+    LLMChatRole,
+)
+from ...schemas.models import LLMModelInfo, LLMModelsRequest, LLMModelsResponse
+
+_TEXT_METHODS = {
+    "generateContent",
+    "generateMessage",
+    "generateText",
+}
+
+
+def _extract_model_code(item: dict) -> str:
+    for key in ("name", "baseModelId", "displayName"):
+        value = item.get(key)
+        if value is None:
+            continue
+        model_code = str(value).strip()
+        if not model_code:
+            continue
+        if model_code.startswith("models/"):
+            return model_code.removeprefix("models/")
+        return model_code
+    return ""
+
+
+def _get_supported_methods(item: dict) -> set[str]:
+    raw = item.get("supportedGenerationMethods")
+    if not isinstance(raw, list):
+        return set()
+    return {str(method).strip() for method in raw if str(method).strip()}
+
+
+def _has_text_support(item: dict) -> bool:
+    methods = _get_supported_methods(item)
+    return bool(methods & _TEXT_METHODS)
+
+
+class GoogleProvider(BaseProviderClient):
+    PROVIDER_CODE = "google"
+    BASE_URL = "https://generativelanguage.googleapis.com"
+    ROLE_MAP = {
+        LLMChatRole.SYSTEM: LLMChatRole.SYSTEM.value,
+        LLMChatRole.USER: LLMChatRole.USER.value,
+        LLMChatRole.ASSISTANT: "model",
+    }
+    THINKING_BUDGET_MAP = {
+        LLMChatReasoningEffort.LOW: 1024,
+        LLMChatReasoningEffort.MEDIUM: 8192,
+        LLMChatReasoningEffort.HIGH: 24576,
+    }
+    FINISH_REASON_MAP = {
+        "STOP": LLM_CHAT_FINISH_STOP,
+        "MAX_TOKENS": LLM_CHAT_FINISH_LENGTH,
+        "SAFETY": LLM_CHAT_FINISH_CONTENT_FILTER,
+        "RECITATION": LLM_CHAT_FINISH_CONTENT_FILTER,
+    }
+
+    def _build_headers(self) -> dict[str, str]:
+        return {}
+
+    def parse_error_message(self, status_code: int, body_raw: str) -> str | None:
+        try:
+            data = json.loads(body_raw) if body_raw.strip() else {}
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        err = data.get("error")
+        if isinstance(err, dict) and err.get("message"):
+            return str(err["message"]).strip() or None
+        return None
+
+    def _fetch_models(self) -> list[dict]:
+        api_key = (self._config.google_api_key or "").strip()
+        if not api_key:
+            return []
+        endpoint = f"/v1beta/models?key={quote(api_key, safe='')}"
+        data = self._send_get_request(endpoint)
+        raw = data.get("models") if isinstance(data, dict) else None
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, dict)]
+
+    def models(self, request: LLMModelsRequest) -> LLMModelsResponse:
+        result: list[LLMModelInfo] = []
+        for item in self._fetch_models():
+            model_code = _extract_model_code(item)
+            if not model_code or not _has_text_support(item):
+                continue
+            result.append(
+                LLMModelInfo(
+                    provider=self.provider_code,
+                    model=model_code,
+                    created=0,
+                )
+            )
+        return LLMModelsResponse(provider=self.provider_code, models=tuple(result))
+
+    def chat(self, request: LLMChatRequest, *, cache: bool = False) -> LLMChatResponse:
+        """Send chat completion request to Google Gemini API."""
+        api_key = (self._config.google_api_key or "").strip()
+        if not api_key:
+            raise LLMProviderAuthError("Google API key is not configured")
+
+        model = request.model.strip()
+        endpoint = f"/v1beta/models/{model}:generateContent?key={quote(api_key, safe='')}"
+
+        system_parts: list[dict] = []
+        contents: list[dict] = []
+
+        for msg in request.messages:
+            parts = self._convert_parts(msg.content)
+            if msg.role == LLMChatRole.SYSTEM:
+                system_parts.extend(parts)
+            else:
+                role = self._map_role(msg.role)
+                contents.append({"role": role, "parts": parts})
+
+        body: dict = {"contents": contents}
+        if system_parts:
+            body["systemInstruction"] = {"parts": system_parts}
+
+        generation_config: dict = {"maxOutputTokens": request.max_tokens}
+        if request.temperature is not None:
+            generation_config["temperature"] = request.temperature
+        if request.top_p is not None:
+            generation_config["topP"] = request.top_p
+
+        budget = self._map_thinking_budget(request.reasoning, disabled_budget=0)
+        if budget is not None:
+            generation_config["thinkingConfig"] = {
+                "thinkingBudget": budget,
+                "includeThoughts": True
+            }
+
+        body["generationConfig"] = generation_config
+
+        data = self._send_post_request(endpoint, body, endpoint_name="generateContent")
+        prompt_feedback = data.get("promptFeedback") if isinstance(data, dict) else None
+        candidates = data.get("candidates") if isinstance(data, dict) else None
+        if (not candidates or not isinstance(candidates, list)) and isinstance(prompt_feedback, dict):
+            block_reason = (prompt_feedback.get("blockReason") or "OTHER").strip() or "OTHER"
+            raise LLMProviderContentFilterError(
+                f"Content blocked by provider (blockReason={block_reason})"
+            )
+        return self._parse_chat_response(request, data)
+
+    def _convert_parts(
+        self, content: list[LLMChatMessageText | LLMChatMessageImage]
+    ) -> list[dict]:
+        """Convert message content list to Google API parts format."""
+        parts: list[dict] = []
+        for item in content:
+            if isinstance(item, LLMChatMessageText):
+                parts.append({"text": item.message})
+            elif isinstance(item, LLMChatMessageImage):
+                parts.append({
+                    "inlineData": {
+                        "mimeType": item.mime,
+                        "data": item.base64,
+                    },
+                })
+        return parts
+
+    def _parse_chat_response(self, request: LLMChatRequest, data: dict) -> LLMChatResponse:
+        """Parse Gemini generateContent response into LLMChatResponse."""
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise self._map_exception(
+                ValueError("No candidates in response"),
+                "Empty candidates array in Gemini response",
+            )
+
+        candidate = candidates[0]
+        content = candidate.get("content", {})
+        parts = content.get("parts") or []
+
+        thought_parts = [
+            p.get("text", "")
+            for p in parts
+            if p.get("thought") is True and "text" in p
+        ]
+        text_parts = [
+            p["text"]
+            for p in parts
+            if "text" in p and p.get("thought") is not True
+        ]
+        reasoning_text = "".join(thought_parts)
+        response_text = "".join(text_parts)
+
+        finish_reason = self._normalize_finish_reason(candidate.get("finishReason"))
+
+        usage_meta = data.get("usageMetadata") or {}
+        tokens_usage = (
+            self._create_tokens_usage(
+                prompt=usage_meta.get("promptTokenCount", 0),
+                reasoning=usage_meta.get("thoughtsTokenCount", 0),
+                completion=usage_meta.get("candidatesTokenCount", 0),
+                total=usage_meta.get("totalTokenCount", 0),
+            )
+            if usage_meta
+            else None
+        )
+
+        response_message = LLMChatMessage(
+            role=LLMChatRole.ASSISTANT,
+            content=[LLMChatMessageText(message=response_text)],
+        )
+
+        return LLMChatResponse(
+            response_id=data.get("modelVersion") or None,
+            message=response_message,
+            finish_reason=finish_reason,
+            created=int(time.time()),
+            tokens_usage=tokens_usage,
+            message_reasoning=reasoning_text,
+        )

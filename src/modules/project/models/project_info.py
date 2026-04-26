@@ -1,1 +1,15 @@
-"""Модель элемента списка проектов."""from __future__ import annotationsfrom dataclasses import dataclassfrom pathlib import Path@dataclassclass ProjectInfo:    """Элемент списка проектов: идентификатор (имя папки), путь к корню и кол-во файлов для обработки."""    id: str  # имя директории проекта    path: Path  # полный путь к корню проекта    docs_count: int = 0  # кол-во файлов в docs/, которые будут обработаны (discovery без хеша)
+"""Модель элемента списка проектов."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class ProjectInfo:
+    """Элемент списка проектов: идентификатор (имя папки), путь к корню и кол-во файлов для обработки."""
+
+    id: str  # имя директории проекта
+    path: Path  # полный путь к корню проекта
+    docs_count: int = 0  # кол-во файлов в docs/, которые будут обработаны (discovery без хеша)

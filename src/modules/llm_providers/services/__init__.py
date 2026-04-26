@@ -1,1 +1,7 @@
-"""Services for the llm_providers module."""from __future__ import annotationsfrom .chat_serializer import ChatRequestSerializer__all__ = ["ChatRequestSerializer"]
+"""Services for the llm_providers module."""
+
+from __future__ import annotations
+
+from .chat_serializer import ChatRequestSerializer
+
+__all__ = ["ChatRequestSerializer"]

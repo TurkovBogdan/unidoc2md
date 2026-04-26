@@ -9,6 +9,7 @@ build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.backup-urb-lsfixer/
 # Logs
 *.log
 logs/

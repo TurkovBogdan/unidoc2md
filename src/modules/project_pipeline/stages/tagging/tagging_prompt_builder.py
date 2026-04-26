@@ -1,1 +1,140 @@
-"""System prompt text for the document tagging LLM stage."""from __future__ import annotationsfrom collections.abc import Sequenceclass TaggingPromptBuilder:    """Builds the chat system message from constants and tagging settings."""    SYSTEM_PROMPT_AGENT_ROLE = (        "You are an agent responsible for creating YAML metadata for Markdown documents. "        "The user message contains the document as Markdown; your task is to analyze it and output "        "only the YAML block described below (no surrounding commentary)."    )    INSTRUCTION_DESCRIPTION = (        "- **Description**: Include a top-level `description` key with a short plain-text summary "        "of what the document is about. Write it in the same language as the document body."    )    INSTRUCTION_DATE = (        "- **Date**: Include a top-level `date` key as YYYY-MM-DD if a clear document date can be "        "inferred from the content; otherwise use an empty string."    )    CURRENT_TAGS_HEADER = "Current tags:"    TAGS_PLACEHOLDER = "#TAGS#"    CURRENT_TAGS_EMPTY_DISPLAY = "—"    EXAMPLE_MARKUP_HEADER = "Example of correct markup:"    YAML_EXAMPLE_OPEN = "---"    YAML_EXAMPLE_TAGS_KEY = "tags:"    YAML_EXAMPLE_DESCRIPTION_LINE = 'description: "Give a concise plain-text summary of the document. Use the same language as the document body."'    YAML_EXAMPLE_DATE_LINE = 'date: "YYYY-MM-DD or empty string if unknown"'    YAML_EXAMPLE_CLOSE = "---"    ADDITIONAL_INSTRUCTIONS_HEADER = "Additional instructions:"    INSTRUCTION_OUTPUT_ONLY = (        "Respond with only that YAML block — no explanation, no markdown code fences unless you use "        "--- delimiters exactly as in the example."    )    @staticmethod    def _tags_format_rules_english(tag_format: str) -> str:        if tag_format == "tag_name":            return (                "Apply tag format **tag_name**: use only **lowercase** letters (same script as the document), "                "digits, and underscores; join words with underscores — **never spaces** inside a tag."            )        return (            "Apply tag format **Tag_name**: each underscore-separated segment — if **all letters are uppercase** "            "(abbreviation), keep it unchanged; otherwise capitalize **only the first character** and leave the rest "            "unchanged. Join segments with underscores (e.g. `Example_tag`, `Lab_PCR`) — **never spaces** inside a tag."        )    @staticmethod    def _instruction_tags_block(tag_format: str) -> str:        fmt_rule = TaggingPromptBuilder._tags_format_rules_english(tag_format)        return (            "- **Tags**: Include a top-level `tags` key whose value is a list of strings in the "            "document's language. Prefer reusing tags from \"Current tags\" when they apply. "            "If that line is only an em dash (—) or empty, infer suitable tags from the document alone. "            f"{fmt_rule}"        )    @staticmethod    def _yaml_example_tag_lines(tag_format: str) -> list[str]:        if tag_format == "tag_name":            return ["  - example_tag", "  - another_tag", "  - third_tag"]        return ["  - Example_tag", "  - Another_tag", "  - Third_tag"]    @staticmethod    def build_tagging_system_prompt(        user_supplement: str | None,        description: bool,        date: bool,        tag_set: Sequence[str],        tag_format: str,    ) -> str:        """Assemble the full system prompt from flags, accumulated tags, tag format, and optional user text."""        C = TaggingPromptBuilder        lines: list[str] = [            C.SYSTEM_PROMPT_AGENT_ROLE,            "",            C._instruction_tags_block(tag_format),        ]        if description:            lines.append(C.INSTRUCTION_DESCRIPTION)        if date:            lines.append(C.INSTRUCTION_DATE)        lines.extend(            [                "",                C.CURRENT_TAGS_HEADER,                C.TAGS_PLACEHOLDER,                "",                C.EXAMPLE_MARKUP_HEADER,                C._compose_yaml_example(                    description=description, date=date, tag_format=tag_format                ),            ]        )        extra = (user_supplement or "").strip()        if extra:            lines.extend(["", C.ADDITIONAL_INSTRUCTIONS_HEADER, extra])        lines.extend(["", C.INSTRUCTION_OUTPUT_ONLY])        template = "\n".join(lines)        return C._replace_tags_placeholder(template, tag_set).strip()    @staticmethod    def _compose_yaml_example(        *, description: bool, date: bool, tag_format: str    ) -> str:        """Return the example YAML block (tags plus optional description/date lines)."""        C = TaggingPromptBuilder        block_lines = [            C.YAML_EXAMPLE_OPEN,            C.YAML_EXAMPLE_TAGS_KEY,            *C._yaml_example_tag_lines(tag_format),        ]        if description:            block_lines.append(C.YAML_EXAMPLE_DESCRIPTION_LINE)        if date:            block_lines.append(C.YAML_EXAMPLE_DATE_LINE)        block_lines.append(C.YAML_EXAMPLE_CLOSE)        return "\n".join(block_lines)    @staticmethod    def _replace_tags_placeholder(text: str, tag_set: Sequence[str]) -> str:        """Substitute #TAGS# with a comma-separated list, or an em dash when there are no tags."""        C = TaggingPromptBuilder        if C.TAGS_PLACEHOLDER not in text:            return text        tags_list = sorted((t for t in tag_set if t), key=str.casefold)        replacement = ", ".join(tags_list) if tags_list else C.CURRENT_TAGS_EMPTY_DISPLAY        out = text.replace(C.TAGS_PLACEHOLDER, replacement)        while "\n\n\n" in out:            out = out.replace("\n\n\n", "\n\n")        return out.strip()
+"""System prompt text for the document tagging LLM stage."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+
+class TaggingPromptBuilder:
+    """Builds the chat system message from constants and tagging settings."""
+
+    SYSTEM_PROMPT_AGENT_ROLE = (
+        "You are an agent responsible for creating YAML metadata for Markdown documents. "
+        "The user message contains the document as Markdown; your task is to analyze it and output "
+        "only the YAML block described below (no surrounding commentary)."
+    )
+
+    INSTRUCTION_DESCRIPTION = (
+        "- **Description**: Include a top-level `description` key with a short plain-text summary "
+        "of what the document is about. Write it in the same language as the document body."
+    )
+    INSTRUCTION_DATE = (
+        "- **Date**: Include a top-level `date` key as YYYY-MM-DD if a clear document date can be "
+        "inferred from the content; otherwise use an empty string."
+    )
+
+    CURRENT_TAGS_HEADER = "Current tags:"
+    TAGS_PLACEHOLDER = "#TAGS#"
+    CURRENT_TAGS_EMPTY_DISPLAY = "—"
+
+    EXAMPLE_MARKUP_HEADER = "Example of correct markup:"
+
+    YAML_EXAMPLE_OPEN = "---"
+    YAML_EXAMPLE_TAGS_KEY = "tags:"
+    YAML_EXAMPLE_DESCRIPTION_LINE = 'description: "Give a concise plain-text summary of the document. Use the same language as the document body."'
+    YAML_EXAMPLE_DATE_LINE = 'date: "YYYY-MM-DD or empty string if unknown"'
+    YAML_EXAMPLE_CLOSE = "---"
+
+    ADDITIONAL_INSTRUCTIONS_HEADER = "Additional instructions:"
+    INSTRUCTION_OUTPUT_ONLY = (
+        "Respond with only that YAML block — no explanation, no markdown code fences unless you use "
+        "--- delimiters exactly as in the example."
+    )
+
+    @staticmethod
+    def _tags_format_rules_english(tag_format: str) -> str:
+        if tag_format == "tag_name":
+            return (
+                "Apply tag format **tag_name**: use only **lowercase** letters (same script as the document), "
+                "digits, and underscores; join words with underscores — **never spaces** inside a tag."
+            )
+        return (
+            "Apply tag format **Tag_name**: each underscore-separated segment — if **all letters are uppercase** "
+            "(abbreviation), keep it unchanged; otherwise capitalize **only the first character** and leave the rest "
+            "unchanged. Join segments with underscores (e.g. `Example_tag`, `Lab_PCR`) — **never spaces** inside a tag."
+        )
+
+    @staticmethod
+    def _instruction_tags_block(tag_format: str) -> str:
+        fmt_rule = TaggingPromptBuilder._tags_format_rules_english(tag_format)
+        return (
+            "- **Tags**: Include a top-level `tags` key whose value is a list of strings in the "
+            "document's language. Prefer reusing tags from \"Current tags\" when they apply. "
+            "If that line is only an em dash (—) or empty, infer suitable tags from the document alone. "
+            f"{fmt_rule}"
+        )
+
+    @staticmethod
+    def _yaml_example_tag_lines(tag_format: str) -> list[str]:
+        if tag_format == "tag_name":
+            return ["  - example_tag", "  - another_tag", "  - third_tag"]
+        return ["  - Example_tag", "  - Another_tag", "  - Third_tag"]
+
+    @staticmethod
+    def build_tagging_system_prompt(
+        user_supplement: str | None,
+        description: bool,
+        date: bool,
+        tag_set: Sequence[str],
+        tag_format: str,
+    ) -> str:
+        """Assemble the full system prompt from flags, accumulated tags, tag format, and optional user text."""
+        C = TaggingPromptBuilder
+        lines: list[str] = [
+            C.SYSTEM_PROMPT_AGENT_ROLE,
+            "",
+            C._instruction_tags_block(tag_format),
+        ]
+        if description:
+            lines.append(C.INSTRUCTION_DESCRIPTION)
+        if date:
+            lines.append(C.INSTRUCTION_DATE)
+        lines.extend(
+            [
+                "",
+                C.CURRENT_TAGS_HEADER,
+                C.TAGS_PLACEHOLDER,
+                "",
+                C.EXAMPLE_MARKUP_HEADER,
+                C._compose_yaml_example(
+                    description=description, date=date, tag_format=tag_format
+                ),
+            ]
+        )
+        extra = (user_supplement or "").strip()
+        if extra:
+            lines.extend(["", C.ADDITIONAL_INSTRUCTIONS_HEADER, extra])
+        lines.extend(["", C.INSTRUCTION_OUTPUT_ONLY])
+        template = "\n".join(lines)
+        return C._replace_tags_placeholder(template, tag_set).strip()
+
+    @staticmethod
+    def _compose_yaml_example(
+        *, description: bool, date: bool, tag_format: str
+    ) -> str:
+        """Return the example YAML block (tags plus optional description/date lines)."""
+        C = TaggingPromptBuilder
+        block_lines = [
+            C.YAML_EXAMPLE_OPEN,
+            C.YAML_EXAMPLE_TAGS_KEY,
+            *C._yaml_example_tag_lines(tag_format),
+        ]
+        if description:
+            block_lines.append(C.YAML_EXAMPLE_DESCRIPTION_LINE)
+        if date:
+            block_lines.append(C.YAML_EXAMPLE_DATE_LINE)
+        block_lines.append(C.YAML_EXAMPLE_CLOSE)
+        return "\n".join(block_lines)
+
+    @staticmethod
+    def _replace_tags_placeholder(text: str, tag_set: Sequence[str]) -> str:
+        """Substitute #TAGS# with a comma-separated list, or an em dash when there are no tags."""
+        C = TaggingPromptBuilder
+        if C.TAGS_PLACEHOLDER not in text:
+            return text
+        tags_list = sorted((t for t in tag_set if t), key=str.casefold)
+        replacement = ", ".join(tags_list) if tags_list else C.CURRENT_TAGS_EMPTY_DISPLAY
+        out = text.replace(C.TAGS_PLACEHOLDER, replacement)
+        while "\n\n\n" in out:
+            out = out.replace("\n\n\n", "\n\n")
+        return out.strip()

@@ -1,1 +1,29 @@
-"""Exceptions for the file_discovery module."""from __future__ import annotationsclass FileDiscoveryError(Exception):    """Base error for the file_discovery module."""    def __init__(self, message: str, cause: Exception | None = None) -> None:        super().__init__(message)        self.cause = causeclass FileDiscoveryPathNotFoundError(FileDiscoveryError):    """Path does not exist or is not a directory."""    passclass FileDiscoveryAccessDeniedError(FileDiscoveryError):    """Access denied to path (read/write)."""    passclass FileDiscoveryHashIOError(FileDiscoveryError):    """Error reading/writing sidecar .md5 or computing hash."""    pass
+"""Exceptions for the file_discovery module."""
+
+from __future__ import annotations
+
+
+class FileDiscoveryError(Exception):
+    """Base error for the file_discovery module."""
+
+    def __init__(self, message: str, cause: Exception | None = None) -> None:
+        super().__init__(message)
+        self.cause = cause
+
+
+class FileDiscoveryPathNotFoundError(FileDiscoveryError):
+    """Path does not exist or is not a directory."""
+
+    pass
+
+
+class FileDiscoveryAccessDeniedError(FileDiscoveryError):
+    """Access denied to path (read/write)."""
+
+    pass
+
+
+class FileDiscoveryHashIOError(FileDiscoveryError):
+    """Error reading/writing sidecar .md5 or computing hash."""
+
+    pass

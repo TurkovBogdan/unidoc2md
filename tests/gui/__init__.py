@@ -1,1 +1,1 @@
-"""GUI tests: pipeline console, adapters, UI text registry."""
+"""GUI tests: pipeline console, adapters, UI text registry."""

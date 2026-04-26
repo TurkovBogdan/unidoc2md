@@ -1,1 +1,6 @@
-"""Models for the file_discovery module."""from .discovery_config import DiscoveryConfigfrom .discovered_document import DiscoveredDocument__all__ = ["DiscoveryConfig", "DiscoveredDocument"]
+"""Models for the file_discovery module."""
+
+from .discovery_config import DiscoveryConfig
+from .discovered_document import DiscoveredDocument
+
+__all__ = ["DiscoveryConfig", "DiscoveredDocument"]

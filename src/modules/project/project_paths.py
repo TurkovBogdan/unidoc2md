@@ -1,1 +1,42 @@
-"""Единая точка получения путей проекта: модель и фабрика от корневой папки проекта."""from __future__ import annotationsfrom dataclasses import dataclassfrom pathlib import Path@dataclass(frozen=True)class ProjectPaths:    """Типизированные пути корня проекта и стандартных каталогов/файлов."""    root: Path    cache: Path    cache_extract: Path    cache_ocr: Path    cache_vision: Path    cache_llm: Path    cache_markdown: Path    docs: Path    result: Path    logs: Path    config_json: Path    @staticmethod    def from_root(root: Path) -> ProjectPaths:        """Строит ProjectPaths от корневой папки проекта."""        resolved = Path(root).resolve()        cache = resolved / "cache"        return ProjectPaths(            root=resolved,            cache=cache,            cache_extract=cache / "extract",            cache_ocr=cache / "ocr",            cache_vision=cache / "vision",            cache_llm=cache / "llm",            cache_markdown=cache / "markdown",            docs=resolved / "docs",            result=resolved / "result",            logs=resolved / "logs",            config_json=resolved / "config.json",        )
+"""Единая точка получения путей проекта: модель и фабрика от корневой папки проекта."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class ProjectPaths:
+    """Типизированные пути корня проекта и стандартных каталогов/файлов."""
+
+    root: Path
+    cache: Path
+    cache_extract: Path
+    cache_ocr: Path
+    cache_vision: Path
+    cache_llm: Path
+    cache_markdown: Path
+    docs: Path
+    result: Path
+    logs: Path
+    config_json: Path
+
+    @staticmethod
+    def from_root(root: Path) -> ProjectPaths:
+        """Строит ProjectPaths от корневой папки проекта."""
+        resolved = Path(root).resolve()
+        cache = resolved / "cache"
+        return ProjectPaths(
+            root=resolved,
+            cache=cache,
+            cache_extract=cache / "extract",
+            cache_ocr=cache / "ocr",
+            cache_vision=cache / "vision",
+            cache_llm=cache / "llm",
+            cache_markdown=cache / "markdown",
+            docs=resolved / "docs",
+            result=resolved / "result",
+            logs=resolved / "logs",
+            config_json=resolved / "config.json",
+        )

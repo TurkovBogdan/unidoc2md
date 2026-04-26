@@ -1,1 +1,109 @@
-"""Parse tagging LLM YAML output and merge fields into MarkdownDocument."""from __future__ import annotationsfrom typing import Anyimport yamlfrom src.modules.markdown.models import MarkdownDocumentfrom src.modules.markdown.utils import extract_markdown_yamlfrom .tagging_tag_normalize import normalize_tagclass TaggingResultParser:    """Turns raw LLM text into tags / description / date and applies them to a document."""    @staticmethod    def _tags_from_yaml_data(data: dict[str, Any], tag_format: str) -> list[str]:        raw_tags = data.get("tags")        if raw_tags is None:            return []        if isinstance(raw_tags, list):            candidates = raw_tags        elif isinstance(raw_tags, str):            candidates = [raw_tags]        else:            return []        result: list[str] = []        seen: set[str] = set()        for item in candidates:            s = (item if isinstance(item, str) else str(item)).strip()            if not s:                continue            norm = normalize_tag(s, tag_format)            if norm and norm not in seen:                seen.add(norm)                result.append(norm)        return result    @staticmethod    def _scalar_yaml_field(data: dict[str, Any], key: str) -> str | None:        v = data.get(key)        if v is None:            return None        if isinstance(v, str):            s = v.strip()            return s if s else None        if isinstance(v, (int, float, bool)):            return str(v).strip() or None        return str(v).strip() or None    @staticmethod    def parse_llm_response(        text: str, tag_format: str    ) -> tuple[list[str], str | None, str | None]:        """Parse YAML from LLM reply: tags list, optional description and date strings."""        if not text or not text.strip():            return [], None, None        stripped = text.strip()        if stripped.startswith("```"):            lines = stripped.split("\n")            if lines[0].startswith("```"):                lines = lines[1:]            if lines and lines[-1].strip() == "```":                lines = lines[:-1]            stripped = "\n".join(lines).strip()        data: dict[str, Any] | None = None        front = extract_markdown_yaml(stripped)        if isinstance(front, dict) and (            front.get("tags") is not None            or front.get("description") is not None            or front.get("date") is not None        ):            data = front        if data is None:            try:                loaded = yaml.safe_load(stripped)                if isinstance(loaded, dict):                    data = loaded            except yaml.YAMLError:                pass        if not isinstance(data, dict):            return [], None, None        P = TaggingResultParser        tags = P._tags_from_yaml_data(data, tag_format)        return tags, P._scalar_yaml_field(data, "description"), P._scalar_yaml_field(data, "date")    @staticmethod    def merge_parsed_into_document(        document: MarkdownDocument,        parsed: tuple[list[str], str | None, str | None],    ) -> MarkdownDocument:        """Apply parse_llm_response output: tags always; description/date when parsed provides them."""        tags, parsed_desc, parsed_date = parsed        new_desc = parsed_desc if parsed_desc is not None else document.description        new_date = parsed_date if parsed_date is not None else document.date        return MarkdownDocument(            relative_path=document.relative_path,            filename=document.filename,            text=document.text,            markdown=document.markdown,            name=document.name,            description=new_desc,            date=new_date,            tags=tags,            segment_runs=document.segment_runs,        )
+"""Parse tagging LLM YAML output and merge fields into MarkdownDocument."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import yaml
+
+from src.modules.markdown.models import MarkdownDocument
+from src.modules.markdown.utils import extract_markdown_yaml
+
+from .tagging_tag_normalize import normalize_tag
+
+
+class TaggingResultParser:
+    """Turns raw LLM text into tags / description / date and applies them to a document."""
+
+    @staticmethod
+    def _tags_from_yaml_data(data: dict[str, Any], tag_format: str) -> list[str]:
+        raw_tags = data.get("tags")
+        if raw_tags is None:
+            return []
+        if isinstance(raw_tags, list):
+            candidates = raw_tags
+        elif isinstance(raw_tags, str):
+            candidates = [raw_tags]
+        else:
+            return []
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            s = (item if isinstance(item, str) else str(item)).strip()
+            if not s:
+                continue
+            norm = normalize_tag(s, tag_format)
+            if norm and norm not in seen:
+                seen.add(norm)
+                result.append(norm)
+        return result
+
+    @staticmethod
+    def _scalar_yaml_field(data: dict[str, Any], key: str) -> str | None:
+        v = data.get(key)
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        if isinstance(v, (int, float, bool)):
+            return str(v).strip() or None
+        return str(v).strip() or None
+
+    @staticmethod
+    def parse_llm_response(
+        text: str, tag_format: str
+    ) -> tuple[list[str], str | None, str | None]:
+        """Parse YAML from LLM reply: tags list, optional description and date strings."""
+        if not text or not text.strip():
+            return [], None, None
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            lines = stripped.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            stripped = "\n".join(lines).strip()
+
+        data: dict[str, Any] | None = None
+        front = extract_markdown_yaml(stripped)
+        if isinstance(front, dict) and (
+            front.get("tags") is not None
+            or front.get("description") is not None
+            or front.get("date") is not None
+        ):
+            data = front
+        if data is None:
+            try:
+                loaded = yaml.safe_load(stripped)
+                if isinstance(loaded, dict):
+                    data = loaded
+            except yaml.YAMLError:
+                pass
+        if not isinstance(data, dict):
+            return [], None, None
+        P = TaggingResultParser
+        tags = P._tags_from_yaml_data(data, tag_format)
+        return tags, P._scalar_yaml_field(data, "description"), P._scalar_yaml_field(data, "date")
+
+    @staticmethod
+    def merge_parsed_into_document(
+        document: MarkdownDocument,
+        parsed: tuple[list[str], str | None, str | None],
+    ) -> MarkdownDocument:
+        """Apply parse_llm_response output: tags always; description/date when parsed provides them."""
+        tags, parsed_desc, parsed_date = parsed
+        new_desc = parsed_desc if parsed_desc is not None else document.description
+        new_date = parsed_date if parsed_date is not None else document.date
+        return MarkdownDocument(
+            relative_path=document.relative_path,
+            filename=document.filename,
+            text=document.text,
+            markdown=document.markdown,
+            name=document.name,
+            description=new_desc,
+            date=new_date,
+            tags=tags,
+            segment_runs=document.segment_runs,
+        )

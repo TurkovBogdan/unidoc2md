@@ -1,1 +1,148 @@
-"""Tests for SystemLogger, FileLogger, ConsoleLogger, SystemLoggerStore, and proxy."""from __future__ import annotationsfrom pathlib import Pathfrom src.core.logger import (    DEBUG,    INFO,    SYSTEM_LOGGER,    SystemLogger,    get_system_logger,    set_system_logger,    SystemLoggerStore,)from src.core.logger.file_logger import FileLoggerfrom src.core.logger.console_logger import ConsoleLoggerfrom src.core.logger.log_levels import LEVEL_BY_NAMEdef test_file_logger_creates_log_file(tmp_path: Path) -> None:    logs_dir = tmp_path / "logs"    file_logger = FileLogger(logs_dir=logs_dir, file_name="app", level=INFO)    file_logger.info("test message")    log_file = logs_dir / "app.log"    assert log_file.exists()    assert "test message" in log_file.read_text(encoding="utf-8")def test_file_logger_level_filters(tmp_path: Path) -> None:    logs_dir = tmp_path / "logs"    file_logger = FileLogger(logs_dir=logs_dir, file_name="lvl", level=INFO)    file_logger.debug("debug msg")    file_logger.info("info msg")    content = (logs_dir / "lvl.log").read_text(encoding="utf-8")    assert "info msg" in content    assert "debug msg" not in contentdef test_system_logger_creates_log_file(tmp_path: Path) -> None:    logs_dir = tmp_path / "logs"    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="app", level=INFO)    sys_logger.info("test message")    log_file = logs_dir / "app.log"    assert log_file.exists()    assert "test message" in log_file.read_text(encoding="utf-8")def test_system_logger_level_filters(tmp_path: Path) -> None:    logs_dir = tmp_path / "logs"    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="lvl", level=INFO)    sys_logger.debug("debug msg")    sys_logger.info("info msg")    content = (logs_dir / "lvl.log").read_text(encoding="utf-8")    assert "info msg" in content    assert "debug msg" not in contentdef test_proxy_console_sink_receives_line(tmp_path: Path) -> None:    SystemLoggerStore.reset()    SystemLoggerStore.set(SystemLogger(logs_dir=tmp_path, file_name="sink", level=INFO))    received: list[str] = []    SYSTEM_LOGGER.set_console_sink(received.append)    SYSTEM_LOGGER.warning("sink test")    SYSTEM_LOGGER.set_console_sink(None)    assert any("sink test" in line for line in received)def test_console_logger_calls_sink(tmp_path: Path) -> None:    received: list[str] = []    console_logger = ConsoleLogger(sink=received.append, level=INFO)    console_logger.debug("no")    console_logger.info("yes")    assert "no" not in (line for line in received)    assert any("yes" in line for line in received)def test_console_logger_respects_level(tmp_path: Path) -> None:    received: list[str] = []    console_logger = ConsoleLogger(sink=received.append, level=INFO)    console_logger.debug("hidden")    assert len(received) == 0    console_logger.warning("shown")    assert any("shown" in line for line in received)def test_level_by_name() -> None:    assert LEVEL_BY_NAME["DEBUG"] == 10    assert LEVEL_BY_NAME["INFO"] == 20    assert LEVEL_BY_NAME["WARNING"] == 30    assert LEVEL_BY_NAME["ERROR"] == 40    assert LEVEL_BY_NAME["CRITICAL"] == 50def test_system_logger_store_get_returns_instance_without_manual_init() -> None:    SystemLoggerStore.reset()    log = SystemLoggerStore.get()    assert log is not None    assert isinstance(log, SystemLogger)def test_get_set_system_logger(tmp_path: Path) -> None:    SystemLoggerStore.reset()    custom = SystemLogger(logs_dir=tmp_path, file_name="g", level=DEBUG)    set_system_logger(custom)    assert get_system_logger() is custom    set_system_logger(None)    SystemLoggerStore.reset()    log_after_reset = get_system_logger()    assert log_after_reset is not None    assert isinstance(log_after_reset, SystemLogger)def test_system_logger_store_set_level(tmp_path: Path) -> None:    SystemLoggerStore.reset()    SystemLoggerStore.set(SystemLogger(logs_dir=tmp_path, file_name="sl", level=DEBUG))    SystemLoggerStore.get().debug("d1")    SystemLoggerStore.set_level(INFO)    SystemLoggerStore.get().debug("d2")    SystemLoggerStore.get().info("i1")    content = (tmp_path / "sl.log").read_text(encoding="utf-8")    assert "d1" in content    assert "i1" in content    assert "d2" not in contentdef test_custom_file_logger_does_not_replace_system_logger(tmp_path: Path) -> None:    SystemLoggerStore.reset()    system_logger = SystemLoggerStore.get()    custom_logger = FileLogger(logs_dir=tmp_path, file_name="job", level=INFO)    assert SystemLoggerStore.get() is system_logger    custom_logger.info("custom")    assert (tmp_path / "job.log").exists()    assert system_logger is not custom_loggerdef test_system_logger_set_level(tmp_path: Path) -> None:    """After set_level(INFO), DEBUG messages are not written to the file."""    logs_dir = tmp_path / "logs"    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="setlvl", level=DEBUG)    sys_logger.debug("before")    sys_logger.set_level(INFO)    sys_logger.debug("after debug")    sys_logger.info("after info")    content = (logs_dir / "setlvl.log").read_text(encoding="utf-8")    assert "before" in content    assert "after info" in content    assert "after debug" not in content
+"""Tests for SystemLogger, FileLogger, ConsoleLogger, SystemLoggerStore, and proxy."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from src.core.logger import (
+    DEBUG,
+    INFO,
+    SYSTEM_LOGGER,
+    SystemLogger,
+    get_system_logger,
+    set_system_logger,
+    SystemLoggerStore,
+)
+from src.core.logger.file_logger import FileLogger
+from src.core.logger.console_logger import ConsoleLogger
+from src.core.logger.log_levels import LEVEL_BY_NAME
+
+
+def test_file_logger_creates_log_file(tmp_path: Path) -> None:
+    logs_dir = tmp_path / "logs"
+    file_logger = FileLogger(logs_dir=logs_dir, file_name="app", level=INFO)
+    file_logger.info("test message")
+    log_file = logs_dir / "app.log"
+    assert log_file.exists()
+    assert "test message" in log_file.read_text(encoding="utf-8")
+
+
+def test_file_logger_level_filters(tmp_path: Path) -> None:
+    logs_dir = tmp_path / "logs"
+    file_logger = FileLogger(logs_dir=logs_dir, file_name="lvl", level=INFO)
+    file_logger.debug("debug msg")
+    file_logger.info("info msg")
+    content = (logs_dir / "lvl.log").read_text(encoding="utf-8")
+    assert "info msg" in content
+    assert "debug msg" not in content
+
+
+def test_system_logger_creates_log_file(tmp_path: Path) -> None:
+    logs_dir = tmp_path / "logs"
+    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="app", level=INFO)
+    sys_logger.info("test message")
+    log_file = logs_dir / "app.log"
+    assert log_file.exists()
+    assert "test message" in log_file.read_text(encoding="utf-8")
+
+
+def test_system_logger_level_filters(tmp_path: Path) -> None:
+    logs_dir = tmp_path / "logs"
+    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="lvl", level=INFO)
+    sys_logger.debug("debug msg")
+    sys_logger.info("info msg")
+    content = (logs_dir / "lvl.log").read_text(encoding="utf-8")
+    assert "info msg" in content
+    assert "debug msg" not in content
+
+
+def test_proxy_console_sink_receives_line(tmp_path: Path) -> None:
+    SystemLoggerStore.reset()
+    SystemLoggerStore.set(SystemLogger(logs_dir=tmp_path, file_name="sink", level=INFO))
+    received: list[str] = []
+    SYSTEM_LOGGER.set_console_sink(received.append)
+    SYSTEM_LOGGER.warning("sink test")
+    SYSTEM_LOGGER.set_console_sink(None)
+    assert any("sink test" in line for line in received)
+
+
+def test_console_logger_calls_sink(tmp_path: Path) -> None:
+    received: list[str] = []
+    console_logger = ConsoleLogger(sink=received.append, level=INFO)
+    console_logger.debug("no")
+    console_logger.info("yes")
+    assert "no" not in (line for line in received)
+    assert any("yes" in line for line in received)
+
+
+def test_console_logger_respects_level(tmp_path: Path) -> None:
+    received: list[str] = []
+    console_logger = ConsoleLogger(sink=received.append, level=INFO)
+    console_logger.debug("hidden")
+    assert len(received) == 0
+    console_logger.warning("shown")
+    assert any("shown" in line for line in received)
+
+
+def test_level_by_name() -> None:
+    assert LEVEL_BY_NAME["DEBUG"] == 10
+    assert LEVEL_BY_NAME["INFO"] == 20
+    assert LEVEL_BY_NAME["WARNING"] == 30
+    assert LEVEL_BY_NAME["ERROR"] == 40
+    assert LEVEL_BY_NAME["CRITICAL"] == 50
+
+
+def test_system_logger_store_get_returns_instance_without_manual_init() -> None:
+    SystemLoggerStore.reset()
+    log = SystemLoggerStore.get()
+    assert log is not None
+    assert isinstance(log, SystemLogger)
+
+
+def test_get_set_system_logger(tmp_path: Path) -> None:
+    SystemLoggerStore.reset()
+    custom = SystemLogger(logs_dir=tmp_path, file_name="g", level=DEBUG)
+    set_system_logger(custom)
+    assert get_system_logger() is custom
+    set_system_logger(None)
+    SystemLoggerStore.reset()
+    log_after_reset = get_system_logger()
+    assert log_after_reset is not None
+    assert isinstance(log_after_reset, SystemLogger)
+
+
+def test_system_logger_store_set_level(tmp_path: Path) -> None:
+    SystemLoggerStore.reset()
+    SystemLoggerStore.set(SystemLogger(logs_dir=tmp_path, file_name="sl", level=DEBUG))
+    SystemLoggerStore.get().debug("d1")
+    SystemLoggerStore.set_level(INFO)
+    SystemLoggerStore.get().debug("d2")
+    SystemLoggerStore.get().info("i1")
+    content = (tmp_path / "sl.log").read_text(encoding="utf-8")
+    assert "d1" in content
+    assert "i1" in content
+    assert "d2" not in content
+
+
+def test_custom_file_logger_does_not_replace_system_logger(tmp_path: Path) -> None:
+    SystemLoggerStore.reset()
+    system_logger = SystemLoggerStore.get()
+    custom_logger = FileLogger(logs_dir=tmp_path, file_name="job", level=INFO)
+    assert SystemLoggerStore.get() is system_logger
+    custom_logger.info("custom")
+    assert (tmp_path / "job.log").exists()
+    assert system_logger is not custom_logger
+
+
+def test_system_logger_set_level(tmp_path: Path) -> None:
+    """After set_level(INFO), DEBUG messages are not written to the file."""
+    logs_dir = tmp_path / "logs"
+    sys_logger = SystemLogger(logs_dir=logs_dir, file_name="setlvl", level=DEBUG)
+    sys_logger.debug("before")
+    sys_logger.set_level(INFO)
+    sys_logger.debug("after debug")
+    sys_logger.info("after info")
+    content = (logs_dir / "setlvl.log").read_text(encoding="utf-8")
+    assert "before" in content
+    assert "after info" in content
+    assert "after debug" not in content

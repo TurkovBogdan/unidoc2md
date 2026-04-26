@@ -1,1 +1,33 @@
-"""Mock provider with a fixed local model list."""from __future__ import annotationsfrom ...interfaces.provider_client import BaseProviderClientfrom ...schemas.chat import LLMChatRequest, LLMChatResponsefrom ...schemas.models import LLMModelInfo, LLMModelsRequest, LLMModelsResponseclass MockProvider(BaseProviderClient):    PROVIDER_CODE = "mock"    BASE_URL = ""    def _build_headers(self) -> dict[str, str]:        return {}    def parse_error_message(self, status_code: int, body_raw: str) -> str | None:        return None    def models(self, request: LLMModelsRequest) -> LLMModelsResponse:        return LLMModelsResponse(            provider=self.provider_code,            models=(                LLMModelInfo(                    provider=self.provider_code,                    model="default",                    created=0,                ),            ),        )    def chat(self, request: LLMChatRequest, *, cache: bool = False) -> LLMChatResponse:        raise NotImplementedError("chat is not implemented for Mock provider")
+"""Mock provider with a fixed local model list."""
+
+from __future__ import annotations
+
+from ...interfaces.provider_client import BaseProviderClient
+from ...schemas.chat import LLMChatRequest, LLMChatResponse
+from ...schemas.models import LLMModelInfo, LLMModelsRequest, LLMModelsResponse
+
+
+class MockProvider(BaseProviderClient):
+    PROVIDER_CODE = "mock"
+    BASE_URL = ""
+
+    def _build_headers(self) -> dict[str, str]:
+        return {}
+
+    def parse_error_message(self, status_code: int, body_raw: str) -> str | None:
+        return None
+
+    def models(self, request: LLMModelsRequest) -> LLMModelsResponse:
+        return LLMModelsResponse(
+            provider=self.provider_code,
+            models=(
+                LLMModelInfo(
+                    provider=self.provider_code,
+                    model="default",
+                    created=0,
+                ),
+            ),
+        )
+
+    def chat(self, request: LLMChatRequest, *, cache: bool = False) -> LLMChatResponse:
+        raise NotImplementedError("chat is not implemented for Mock provider")

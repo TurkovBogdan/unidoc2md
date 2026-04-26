@@ -1,1 +1,27 @@
-"""Этапы пайплайна: базовый контракт и реализации по папкам."""from .base import BasePipelineStagefrom ..models import (    PipelineContext,    StageResult,)from .discovery import DiscoveryStagefrom .extract import ExtractStagefrom .image_processing import (    ImageProcessingStage,)from .markdown import MarkdownStagefrom .result import ResultStagefrom .tagging import TaggingStage__all__ = [    "BasePipelineStage",    "DiscoveryStage",    "ExtractStage",    "ImageProcessingStage",    "MarkdownStage",    "PipelineContext",    "ResultStage",    "StageResult",    "TaggingStage",]
+"""Этапы пайплайна: базовый контракт и реализации по папкам."""
+
+from .base import BasePipelineStage
+from ..models import (
+    PipelineContext,
+    StageResult,
+)
+from .discovery import DiscoveryStage
+from .extract import ExtractStage
+from .image_processing import (
+    ImageProcessingStage,
+)
+from .markdown import MarkdownStage
+from .result import ResultStage
+from .tagging import TaggingStage
+
+__all__ = [
+    "BasePipelineStage",
+    "DiscoveryStage",
+    "ExtractStage",
+    "ImageProcessingStage",
+    "MarkdownStage",
+    "PipelineContext",
+    "ResultStage",
+    "StageResult",
+    "TaggingStage",
+]

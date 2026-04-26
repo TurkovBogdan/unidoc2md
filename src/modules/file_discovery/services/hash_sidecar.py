@@ -1,1 +1,53 @@
-"""Read/write sidecar .md5 for discovered files."""from __future__ import annotationsimport threadingfrom pathlib import Pathfrom src.core.utils.hash import md5_filefrom ..errors import FileDiscoveryHashIOErrorfrom ..models import DiscoveredDocumentclass HashSidecarService:    """Manages .md5 sidecar files: create, refresh when stale, fill doc.hash."""    def _sidecar_path(self, file_path: Path) -> Path:        return file_path.with_suffix(file_path.suffix + ".md5")    def ensure_hashes(        self,        documents: list[DiscoveredDocument],        cancel_event: threading.Event | None = None,    ) -> None:        """        For each document: if .md5 is missing or stale, compute and write; otherwise read.        Fills document.hash in-place.        doc.path is absolute in POSIX form; Path() handles it correctly on any OS.        """        for doc in documents:            if cancel_event is not None and cancel_event.is_set():                break            path = Path(doc.path)            if not path.exists() or not path.is_file():                continue            try:                doc.hash = self._ensure_hash(path)            except (OSError, IOError) as e:                raise FileDiscoveryHashIOError(f"Hash I/O for {path}: {e}", cause=e) from e    def _ensure_hash(self, file_path: Path) -> str:        sidecar = self._sidecar_path(file_path)        file_mtime = file_path.stat().st_mtime        if sidecar.exists() and sidecar.is_file():            if sidecar.stat().st_mtime < file_mtime:                sidecar.unlink()            else:                return sidecar.read_text(encoding="utf-8").strip()        digest = md5_file(file_path)        sidecar.write_text(digest, encoding="utf-8")        return digest
+"""Read/write sidecar .md5 for discovered files."""
+
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+from src.core.utils.hash import md5_file
+
+from ..errors import FileDiscoveryHashIOError
+from ..models import DiscoveredDocument
+
+
+class HashSidecarService:
+    """Manages .md5 sidecar files: create, refresh when stale, fill doc.hash."""
+
+    def _sidecar_path(self, file_path: Path) -> Path:
+        return file_path.with_suffix(file_path.suffix + ".md5")
+
+    def ensure_hashes(
+        self,
+        documents: list[DiscoveredDocument],
+        cancel_event: threading.Event | None = None,
+    ) -> None:
+        """
+        For each document: if .md5 is missing or stale, compute and write; otherwise read.
+        Fills document.hash in-place.
+        doc.path is absolute in POSIX form; Path() handles it correctly on any OS.
+        """
+        for doc in documents:
+            if cancel_event is not None and cancel_event.is_set():
+                break
+            path = Path(doc.path)
+            if not path.exists() or not path.is_file():
+                continue
+            try:
+                doc.hash = self._ensure_hash(path)
+            except (OSError, IOError) as e:
+                raise FileDiscoveryHashIOError(f"Hash I/O for {path}: {e}", cause=e) from e
+
+    def _ensure_hash(self, file_path: Path) -> str:
+        sidecar = self._sidecar_path(file_path)
+        file_mtime = file_path.stat().st_mtime
+
+        if sidecar.exists() and sidecar.is_file():
+            if sidecar.stat().st_mtime < file_mtime:
+                sidecar.unlink()
+            else:
+                return sidecar.read_text(encoding="utf-8").strip()
+
+        digest = md5_file(file_path)
+        sidecar.write_text(digest, encoding="utf-8")
+        return digest

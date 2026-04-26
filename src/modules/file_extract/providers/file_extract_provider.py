@@ -1,1 +1,79 @@
-"""Single registry of extract providers: provider classes, provider_code, extensions, schema."""from __future__ import annotationsfrom typing import TYPE_CHECKINGfrom ..interfaces import FileExtractProviderfrom src.modules.settings_schema.models import SettingFieldSchema, SettingsGroupSchemaif TYPE_CHECKING:    passdef _get_provider_registry() -> tuple[tuple[type[FileExtractProvider], bool], ...]:    """Lazy registry to avoid circular import: providers.types -> services -> file_extract_provider -> types."""    from .types import (        ImageExtractProvider,        MarkdownExtractProvider,        OfficeExtractProvider,        PdfExtractProvider,        TextExtractProvider,    )    return (        (MarkdownExtractProvider, True),        (PdfExtractProvider, True),        (OfficeExtractProvider, True),        (TextExtractProvider, True),        (ImageExtractProvider, True),    )def get_provider_classes() -> tuple[type[FileExtractProvider], ...]:    """List of registered provider classes (with content: .txt, .pdf, etc.)."""    return tuple(cls for cls, _ in _get_provider_registry())def get_extension_map() -> dict[str, FileExtractProvider]:    """Map extension -> provider instance."""    ext_to_provider: dict[str, FileExtractProvider] = {}    for provider_cls, _ in _get_provider_registry():        instance = provider_cls()        for ext in instance.supported_extensions():            ext_to_provider[ext] = instance    return ext_to_providerdef get_supported_extensions() -> set[str]:    """Union of all supported extensions from registered providers."""    exts: set[str] = set()    for provider_cls, _ in _get_provider_registry():        exts |= provider_cls.supported_extensions()    return extsdef get_provider_settings_groups() -> tuple[SettingsGroupSchema, ...]:    """Provider settings groups for extract schema. Only providers with include_in_schema=True."""    result: list[SettingsGroupSchema] = []    for provider_cls, include_in_schema in _get_provider_registry():        if not include_in_schema:            continue        schema = provider_cls.project_settings_schema()        if not schema:            continue        code = provider_cls.provider_code()        title = provider_cls.provider_title()        description = provider_cls.provider_description()        result.append(SettingsGroupSchema(code=code, title=title, description=description, fields=schema))    return tuple(result)def get_provider_by_extension(ext: str) -> FileExtractProvider | None:    """Return provider for file extension or None."""    if not ext:        return None    ext = ext.lower()    if not ext.startswith("."):        ext = f".{ext}"    return get_extension_map().get(ext)
+"""Single registry of extract providers: provider classes, provider_code, extensions, schema."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ..interfaces import FileExtractProvider
+from src.modules.settings_schema.models import SettingFieldSchema, SettingsGroupSchema
+
+if TYPE_CHECKING:
+    pass
+
+
+def _get_provider_registry() -> tuple[tuple[type[FileExtractProvider], bool], ...]:
+    """Lazy registry to avoid circular import: providers.types -> services -> file_extract_provider -> types."""
+    from .types import (
+        ImageExtractProvider,
+        MarkdownExtractProvider,
+        OfficeExtractProvider,
+        PdfExtractProvider,
+        TextExtractProvider,
+    )
+
+    return (
+        (MarkdownExtractProvider, True),
+        (PdfExtractProvider, True),
+        (OfficeExtractProvider, True),
+        (TextExtractProvider, True),
+        (ImageExtractProvider, True),
+    )
+
+
+def get_provider_classes() -> tuple[type[FileExtractProvider], ...]:
+    """List of registered provider classes (with content: .txt, .pdf, etc.)."""
+    return tuple(cls for cls, _ in _get_provider_registry())
+
+
+def get_extension_map() -> dict[str, FileExtractProvider]:
+    """Map extension -> provider instance."""
+    ext_to_provider: dict[str, FileExtractProvider] = {}
+    for provider_cls, _ in _get_provider_registry():
+        instance = provider_cls()
+        for ext in instance.supported_extensions():
+            ext_to_provider[ext] = instance
+    return ext_to_provider
+
+
+def get_supported_extensions() -> set[str]:
+    """Union of all supported extensions from registered providers."""
+    exts: set[str] = set()
+    for provider_cls, _ in _get_provider_registry():
+        exts |= provider_cls.supported_extensions()
+    return exts
+
+
+def get_provider_settings_groups() -> tuple[SettingsGroupSchema, ...]:
+    """Provider settings groups for extract schema. Only providers with include_in_schema=True."""
+    result: list[SettingsGroupSchema] = []
+    for provider_cls, include_in_schema in _get_provider_registry():
+        if not include_in_schema:
+            continue
+        schema = provider_cls.project_settings_schema()
+        if not schema:
+            continue
+        code = provider_cls.provider_code()
+        title = provider_cls.provider_title()
+        description = provider_cls.provider_description()
+        result.append(SettingsGroupSchema(code=code, title=title, description=description, fields=schema))
+    return tuple(result)
+
+
+def get_provider_by_extension(ext: str) -> FileExtractProvider | None:
+    """Return provider for file extension or None."""
+    if not ext:
+        return None
+    ext = ext.lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    return get_extension_map().get(ext)

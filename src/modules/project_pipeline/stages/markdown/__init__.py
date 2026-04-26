@@ -1,1 +1,7 @@
-"""Этап markdown: генерация markdown из извлечённых документов."""from .stage import (    MarkdownStage,)__all__ = ["MarkdownStage"]
+"""Этап markdown: генерация markdown из извлечённых документов."""
+
+from .stage import (
+    MarkdownStage,
+)
+
+__all__ = ["MarkdownStage"]

@@ -1,1 +1,11 @@
-"""Интерфейсы пайплайна: логгер."""from .logger import (    PipelineLoggerProtocol,    ProjectPipelineLogger,)__all__ = [    "PipelineLoggerProtocol",    "ProjectPipelineLogger",]
+"""Интерфейсы пайплайна: логгер."""
+
+from .logger import (
+    PipelineLoggerProtocol,
+    ProjectPipelineLogger,
+)
+
+__all__ = [
+    "PipelineLoggerProtocol",
+    "ProjectPipelineLogger",
+]
